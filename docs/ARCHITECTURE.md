@@ -1,16 +1,19 @@
 # MindFlow 架构说明
 
-本文档是 [PRD.md](./PRD.md) 的技术补充，描述 MVP 阶段的模块划分、目录建议与关键数据流。实施步骤见 [DEV_GUIDE.md](./DEV_GUIDE.md)。实现时可参考 OpenMAIC 对应模块，但 MindFlow 为独立代码库。
+本文档是 [PRD.md](./PRD.md) 的技术补充，描述 MVP 及拓展阶段（M2+ 大纲编辑助手、Phase 2 冻结 Plan 编排）的模块划分、目录建议与关键数据流。实施步骤见 [DEV_GUIDE.md](./DEV_GUIDE.md)。实现时可参考 OpenMAIC **经典路径**对应模块，**不**引入 OpenMAIC Pro Agent Runtime。
 
 ---
 
 ## 1. 设计原则
 
 1. **薄壳 + 厚 lib**：页面与 API Route 只做编排，业务逻辑放在 `lib/`。
-2. **插件化场景类型**：`slide` / `quiz` 通过 `lib/scenes/registry` 注册，便于 Phase 2 扩展 `interactive`。
+2. **插件化场景类型**：`slide` / `quiz` 通过 `lib/scenes/registry` 注册，便于扩展 `interactive`。
 3. **条件 RAG**：`has_knowledge_base` 为唯一开关；无 PDF 时不走向量检索。
-4. **无状态 Chat API**：每轮请求携带 `messages` + `directorState` + `courseId`（与 OpenMAIC 一致）。
-5. **功能开关**：`lib/config/features.ts` 控制未实现能力，避免半成品入口暴露。
+4. **无状态 Chat API**：课堂讨论每轮请求携带 `messages` + `directorState` + `courseId`（与 OpenMAIC 经典路径一致）；**不**为课堂引入服务端 Agent Session。
+5. **功能开关**：`lib/config/features.ts` 控制 `outlineOrchestration`、`outlineAssistant` 等，避免半成品入口暴露。
+6. **双编排域**：**生成域**（Plan / Outline / scene 生成）与 **课堂讨论域**（Director + 3 Agent）分离，各自 LangGraph 或流水线，不共用图状态。
+7. **Plan 与 Outline 分层**：`CurriculumPlan`（蓝图，可冻结）与 `SceneOutline[]`（执行稿）分字段存储；Phase 2 冻结后 Agent **不可**改 Plan。
+8. **有界 Agent 循环**：Phase 2 评审循环 `revisionCountMax` 默认 3，超限 **报错退出**，不 silent retry。
 
 ---
 
@@ -69,7 +72,12 @@ mindflow/
 │       ├── courses/[id]/route.ts
 │       ├── courses/[id]/ingest/route.ts
 │       ├── courses/[id]/generate-remaining/route.ts
-│       ├── generate/outlines-stream/route.ts
+│       ├── generate/outlines-stream/route.ts      # MVP 单次大纲 SSE
+│       ├── generate/curriculum-plan/route.ts      # Phase 2：Planner
+│       ├── generate/outline-from-plan/route.ts    # Phase 2：Drafter→Critic→Director
+│       ├── courses/[id]/curriculum-plan/          # GET/PATCH/confirm/replan
+│       ├── courses/[id]/outline-session/route.ts  # M2+ 大纲助手 session
+│       ├── courses/[id]/outline-chat/route.ts     # M2+ Tool Chat SSE
 │       ├── generate/scene-content/route.ts
 │       ├── generate/scene-actions/route.ts
 │       ├── chat/route.ts
@@ -78,7 +86,12 @@ mindflow/
 │   ├── settings/                         # SettingsDialog（顶栏按钮，无独立路由）
 │   ├── playback/PlaybackShell.tsx
 │   ├── discussion/DiscussionPanel.tsx
-│   ├── generation/OutlineStreamList.tsx
+│   ├── generation/
+│   │   ├── OutlineStreamList.tsx
+│   │   ├── OutlinesEditor.tsx
+│   │   ├── PlanEditor.tsx                # Phase 2：sceneSlots 表格
+│   │   ├── OutlineReviewRounds.tsx       # Phase 2：Critic/Director Round UI
+│   │   └── OutlineAssistantPanel.tsx     # M2+：侧栏聊天
 │   └── scenes/SlideView.tsx, QuizView.tsx
 ├── config/
 │   └── agents.json                       # 固定 3 Agent
@@ -93,10 +106,17 @@ mindflow/
 │   │   ├── embed.ts
 │   │   └── retrieve.ts
 │   ├── generation/
-│   │   ├── outline-generator.ts
+│   │   ├── outline-generator.ts          # MVP 单次大纲
+│   │   ├── outline-tools.ts              # M2+ 大纲编辑助手 tools
+│   │   ├── curriculum-planner.ts         # Phase 2：Planner
+│   │   ├── outline-drafter.ts            # Phase 2：Drafter
+│   │   ├── outline-critic.ts             # Phase 2：Critic（Plan 一致性）
+│   │   ├── outline-director.ts           # Phase 2：redraft | approve only
+│   │   ├── outline-graph.ts              # Phase 2：LangGraph 编排
+│   │   ├── plan-consistency.ts           # Phase 2：规则预检（order/type/页数）
 │   │   ├── scene-content.ts
 │   │   ├── scene-actions.ts
-│   │   └── prompts/                      # 或 lib/prompts/
+│   │   └── prompts/
 │   ├── orchestration/
 │   │   ├── director-graph.ts
 │   │   ├── stateless-generate.ts
@@ -131,7 +151,28 @@ mindflow/
 
 ### 4.2 `lib/generation`
 
-两阶段生成（与 OpenMAIC 一致）：
+**生成域三轨**（PRD §2.1.1、§3.1.1、§3.1.2、§3.5）：
+
+```mermaid
+flowchart LR
+  subgraph mvp [MVP]
+    OS[outlines-stream]
+  end
+  subgraph p2 [Phase2]
+    PL[Planner]
+    FR[用户冻结Plan]
+    OFP[outline-from-plan]
+    PL --> FR --> OFP
+  end
+  subgraph m2p [M2plus]
+    OC[outline-chat_tools]
+  end
+  OS --> OC
+  OFP --> OC
+  OC --> SC[scene-content_actions]
+```
+
+两阶段 scene 生成（与 OpenMAIC 经典路径一致）：
 
 ```
 SceneOutline → scene-content → scene-actions → Scene
@@ -144,6 +185,42 @@ SceneOutline → scene-content → scene-actions → Scene
 | 二者 | `requirement` + retrieve topK |
 
 首屏策略：只生成 `sort_order=1` 的 scene，其余在 `generate-remaining` 串行完成。
+
+#### MVP（`outlineOrchestration=false`）
+
+- `outline-generator.ts` + `POST /api/generate/outlines-stream`：单次 LLM + SSE。
+- 见 PRD [3.1.1](./PRD.md#311-生成流水线策略mvp-固定流程--phase-2-可切换)。
+
+#### M2+（`outlineAssistant=true`）
+
+- `outline-tools.ts`：`list_outlines`、`revise_outline`、`insert_outline`、`delete_outline`。
+- `POST /api/courses/[id]/outline-chat`：AI SDK `streamText` + tools，**非**独立 Agent Runtime。
+- Session：`chat_sessions.session_type='outline'` + `messages` 续跑。
+- **策略 A**：助手可改 Outline 至与冻结 Plan 不一致；确认大纲前可选警告，不阻断（PRD §3.1.2.2）。
+
+#### Phase 2（`outlineOrchestration=true`）
+
+**阶段 A — Plan（人可改）**
+
+1. `curriculum-planner.ts` → `POST /api/generate/curriculum-plan`
+2. 用户 `PATCH /api/courses/[id]/curriculum-plan`（仅 `plan_status=draft`）
+3. `POST .../curriculum-plan/confirm` → `plan_status=frozen`
+
+**阶段 B — 评审循环（Plan 只读）**
+
+```
+Drafter(frozenPlan) → Critic → Director
+  → redraft → Drafter（循环，revisionCountMax 默认 3）
+  → approve → 写入 outlines
+  → 超限 → outline_generation_failed + SSE error
+```
+
+- `outline-graph.ts`：LangGraph；Director **仅** `redraft` | `approve`，**无** `replan`。
+- `outline-critic.ts`：校验 Outline 与 `sceneSlots` 对齐（页数、order、type、教学目标、quiz 约束）；`requiresReplan` 仅 UI 提示。
+- `plan-consistency.ts`：规则预检（代码），减少 LLM 误判。
+- API：`POST /api/generate/outline-from-plan`（SSE 事件见 PRD §7.1）。
+
+完整规格：PRD [3.5 节](./PRD.md#35-phase-2-拓展冻结-plan--大纲评审闭环非-mvp)。
 
 ### 4.3 `lib/orchestration`
 
@@ -224,12 +301,60 @@ sequenceDiagram
   API-->>U: text + sources
 ```
 
+### 5.3 Phase 2：冻结 Plan → 评审大纲（有 PDF 可选）
+
+```mermaid
+sequenceDiagram
+  participant P as GenerationPreview
+  participant API as API
+  participant PL as Planner
+  participant DB as Postgres
+  participant G as outline-graph
+
+  P->>API: POST /generate/curriculum-plan
+  API->>PL: generateObject
+  PL->>DB: curriculum_plan, plan_status=draft
+  P->>API: PATCH curriculum-plan
+  P->>API: POST curriculum-plan/confirm
+  API->>DB: plan_status=frozen
+
+  P->>API: POST /generate/outline-from-plan
+  loop revisionCount le max
+    API->>G: Drafter
+    G->>G: Critic
+    G->>G: Director redraft or approve
+  end
+  alt approve
+    G->>DB: insert outlines
+    API-->>P: SSE done
+  else limit exceeded
+    API->>DB: status=outline_generation_failed
+    API-->>P: SSE error REVISION_LIMIT_EXCEEDED
+  end
+```
+
+### 5.4 M2+：大纲编辑助手
+
+```mermaid
+sequenceDiagram
+  participant P as GenerationPreview
+  participant API as outline-chat
+  participant DB as Postgres
+
+  P->>API: GET outline-session
+  API-->>P: messages history
+  P->>API: POST outline-chat
+  API->>API: streamText + revise_outline tool
+  API->>DB: update outlines
+  API-->>P: SSE outlines_updated
+```
+
 ---
 
 ## 6. 数据库与 pgvector
 
 - 使用 **Neon**、**Supabase** 或 Docker 本地 Postgres，需启用 `vector` 扩展。
-- Drizzle schema 与 PRD [第 6 节](./PRD.md#6-数据模型) 对齐。
+- Drizzle schema 与 PRD [§6.1](./PRD.md#61-表结构mvp--phase-2--m2-扩展字段) 对齐（含 Plan 冻结字段、`outline` session）。
 - 迁移：`drizzle-kit push` 或版本化 migration。
 
 **相似度查询示例**（概念）：
@@ -263,17 +388,20 @@ LIMIT 8;
 
 ## 8. 与 OpenMAIC 的差异摘要
 
-| 维度 | OpenMAIC | MindFlow MVP |
-|------|----------|--------------|
-| 页面路由 | `/`、`/generation-preview`、`/classroom/[id]` | **相同三条** |
-| 设置 | `SettingsDialog` 组件 | 精简版 `SettingsDialog`，无 `/settings` 路由 |
-| 持久化 | IndexedDB 为主 | Postgres + pgvector |
-| 输入 | requirement + 可选 PDF | 同等，但 PDF-only 为一等路径 |
-| RAG | 无 | 有，讨论必接（有 PDF 时） |
-| 场景类型 | slide/quiz/interactive/pbl | slide + quiz |
-| Agent | 可动态生成 | 固定 3 个 |
-| 播放 | PlaybackEngine + TTS + Roundtable | TimelinePlayer + 字幕 |
-| 编辑 | Pro 编辑器 | 无 |
+| 维度 | OpenMAIC 经典路径 | OpenMAIC 1.0 Pro | MindFlow |
+|------|-------------------|------------------|----------|
+| 页面路由 | `/`、`/generation-preview`、`/classroom/[id]` | + `/workspace` | **相同三条**（无 Workbench） |
+| 生成大纲 | 单次 `outlines-stream` | Agent tools `generate_scene` | MVP 同左；Phase 2 冻结 Plan + 评审循环 |
+| Plan 冻结 / Critic | 无 | 隐式在 Pro 对话中 | **显式** Plan 表 + 有界 redraft 循环 |
+| 大纲助手 | 无 | Pro 聊天改课 | M2+ `outline-chat` + AI SDK tools |
+| 课堂讨论 | 无状态 `/api/chat` | 同左 | 同左 |
+| Agent Runtime | 无 | pi-agent + Postgres Session | **不做** |
+| 持久化 | IndexedDB / 可选 PG | Postgres | Postgres + pgvector |
+| RAG | 1.0 有模块未接线 | 素材字面搜索 | pgvector retrieve |
+| 场景类型 | 多种 | 多种 | slide + quiz |
+| 播放 | TTS + Pro | 同左 | TimelinePlayer + 字幕 |
+
+**参考来源**：OpenMAIC `0.2.x` 经典三页 + `director-graph`；**不参考** `lib/server/agent-runtime/`。
 
 ---
 
@@ -293,10 +421,10 @@ LIMIT 8;
 
 ## 10. 相关文档
 
-- [PRD.md](./PRD.md) — 产品需求、API 列表、用户故事
-- [DEV_GUIDE.md](./DEV_GUIDE.md) — 里程碑实施、移植矩阵、验收清单
-- OpenMAIC 参考：`lib/orchestration/director-graph.ts`、`app/api/generate/scene-outlines-stream/route.ts`
+- [PRD.md](./PRD.md) — 产品需求 v1.4：冻结 Plan、M2+ 助手、API、数据模型
+- [DEV_GUIDE.md](./DEV_GUIDE.md) — 里程碑 M0～M4、M2+、P2a～P2d
+- OpenMAIC 经典参考：`lib/orchestration/director-graph.ts`、`app/api/generate/scene-outlines-stream/route.ts`
 
 ---
 
-*文档版本：v1.0 | 2026-09-02*
+*文档版本：v1.2 | 2026-09-07 | 对齐 PRD v1.4*
