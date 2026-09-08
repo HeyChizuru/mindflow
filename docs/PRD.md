@@ -1,9 +1,9 @@
 # MindFlow 产品需求文档（PRD）
 
 **产品全称**：MindFlow — AI 知识库驱动的互动课堂生成系统  
-**版本**：v1.4  
+**版本**：v1.5  
 **状态**：MVP 定义（含 M2+ 大纲助手、Phase 2 冻结 Plan 编排规格）  
-**最后更新**：2026-09-07  
+**最后更新**：2026-09-08  
 
 ---
 
@@ -27,7 +27,7 @@
 - [12. 风险与缓解](#12-风险与缓解)
 - [13. 附录](#13-附录)
 
-相关文档：[ARCHITECTURE.md](./ARCHITECTURE.md)（v1.2） · [DEV_GUIDE.md](./DEV_GUIDE.md)（v1.2，实施手册）
+相关文档：[ARCHITECTURE.md](./ARCHITECTURE.md)（v1.3） · [DEV_GUIDE.md](./DEV_GUIDE.md)（v1.2，实施手册）
 
 ---
 
@@ -39,7 +39,8 @@
 | v1.1 | 2026-09-02 | 路由对齐 OpenMAIC：`/`、`/generation-preview`、`/classroom/[id]`；设置改为 `SettingsDialog` 组件；新增 [DEV_GUIDE.md](./DEV_GUIDE.md) |
 | v1.2 | 2026-09-02 | 新增 Phase 2 规格：大纲多 Agent 编排（Planner → Drafter → Critic → Director 自主循环） |
 | v1.3 | 2026-09-07 | 明确 MVP 固定生成流水线及 `outlineOrchestration` 切换策略（[3.1.1 节](#311-生成流水线策略mvp-固定流程--phase-2-可切换)） |
-| v1.4 | 2026-09-07 | 定稿生成域三阶段：**冻结 Plan → Agent 评审循环（无 replan）→ 大纲编辑助手（策略 A）**；新增 [3.1.2](#312-大纲编辑助手m2非独立-agent-系统)、重写 [3.5](#35-phase-2-拓展冻结-plan--大纲评审闭环非-mvp)；同步数据模型、API、页面与里程碑 |
+| v1.4 | 2026-09-07 | 定稿生成域三阶段：冻结 Plan → Agent 评审循环 → 大纲编辑助手 |
+| v1.5 | 2026-09-08 | **命名对齐 OpenMAIC 0.2.x**：API/类型/模块名与 `lib/types/generation.ts`、`scene-outlines-stream`、`use-scene-generator` 等一致；见 [§13.11](#1311-openmaic-命名对齐表) |
 
 ---
 
@@ -141,7 +142,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   ingest[ingest有PDF]
-  planGen[Planner生成CurriculumPlan]
+  planGen[Planner生成sceneOutlines（蓝图）]
   planEdit[用户编辑Plan表格]
   planFreeze[确认Plan冻结]
   agentLoop[Drafter→Critic→Director循环]
@@ -164,7 +165,7 @@ flowchart TD
 
 | 阶段 | 名称 | 驱动方 | 产出 |
 |------|------|--------|------|
-| A | Plan 规划 | Planner + **用户手改** | `CurriculumPlan`（确认后 **冻结**） |
+| A | Plan 规划 | Planner + **用户手改** | `sceneOutlines（蓝图）`（确认后 **冻结**） |
 | B | 大纲评审循环 | **Agent 自主**（Plan 只读） | `SceneOutline[]`（须与 Plan 一致） |
 | C | 大纲微调 | 大纲助手 + **用户手改** | 最终 `SceneOutline[]`（可偏离 Plan，策略 A） |
 | D | 课件生成 | 固定 Pipeline | `scenes` |
@@ -218,7 +219,7 @@ flowchart TD
 
 ```
 ingest?（有 PDF）
-  → POST /api/generate/outlines-stream（单次 LLM + SSE）
+  → POST /api/generate/scene-outlines-stream（单次 LLM + SSE）
   → PATCH /api/courses/[id]/outlines（用户可编辑大纲）
   → scene-content → scene-actions（首屏，再续生成）
   → /classroom/[id]
@@ -230,7 +231,7 @@ ingest?（有 PDF）
 |----|-----|--------------------------------------------------------------|
 | 大纲来源 | `lib/generation/outline-generator.ts` 单次调用 | 阶段 A：`Planner` 出 Plan → 用户冻结；阶段 B：`Drafter → Critic → Director` 循环 |
 | 切换方式 | — | `features.outlineOrchestration: true` |
-| API 入口 | 同一 `POST /api/generate/outlines-stream` 内分支（MVP）；Phase 2 增加 Plan 与执行分步 API（见 §7） | 同上 |
+| API 入口 | 同一 `POST /api/generate/scene-outlines-stream` 内分支（MVP）；Phase 2 增加 Plan 与执行分步 API（见 §7） | 同上 |
 | 下游不变 | `SceneOutline[]` 入库、`scene-content` / `scene-actions`、课堂只读播放 | 共用 |
 | 大纲微调 | 手改 `OutlinesEditor` | 叠加 M2+ [大纲编辑助手](#312-大纲编辑助手m2非独立-agent-系统)（`features.outlineAssistant`） |
 
@@ -239,11 +240,11 @@ ingest?（有 PDF）
 - 业务逻辑放在 `lib/generation/`；Route 仅编排与 `features` 分支。
 - 大纲输出始终为 `SceneOutline[]` + `languageDirective`，与 Phase 2 一致。
 - Phase 2 **不推翻** `generation-preview` 主流程，增量增加 Plan 表格、评审 Round UI、大纲助手侧栏。
-- **Plan 与 Outline 分层**：`CurriculumPlan`（蓝图）与 `SceneOutline[]`（执行稿）分表/分字段存储（见 §6）。
+- **Plan 与 Outline 分层**：`sceneOutlines（蓝图）`（蓝图）与 `SceneOutline[]`（执行稿）分表/分字段存储（见 §6）。
 
 #### 3.1.2 大纲编辑助手（M2+，非独立 Agent 系统）
 
-> **定位**：在 **阶段 B 评审循环 `approve` 之后**（Phase 2），或 **MVP 单次 `outlines-stream` 完成之后**，与「手改大纲」并列的可选能力。不纳入 M0～M4 必交范围；建议在 M2 完成后、Phase 2 之前或并行交付（**M2+**）。
+> **定位**：在 **阶段 B 评审循环 `approve` 之后**（Phase 2），或 **MVP 单次 `scene-outlines-stream` 完成之后**，与「手改大纲」并列的可选能力。不纳入 M0～M4 必交范围；建议在 M2 完成后、Phase 2 之前或并行交付（**M2+**）。
 
 ##### 3.1.2.1 产品定位
 
@@ -253,7 +254,7 @@ ingest?（有 PDF）
 
 - OpenMAIC Pro 的 pi-agent-core / 持久化 Agent Runtime
 - Phase 2 的 Planner / Critic / Director 自主编排（见 [3.5 节](#35-phase-2-拓展冻结-plan--大纲评审闭环非-mvp)）
-- 首次大纲生成（仍由 MVP `outlines-stream` 或 Phase 2 阶段 B 负责）
+- 首次大纲生成（仍由 MVP `scene-outlines-stream` 或 Phase 2 阶段 B 负责）
 
 **是**：
 
@@ -264,7 +265,7 @@ ingest?（有 PDF）
 
 | 层级 | 对 Plan 的约束 |
 |------|----------------|
-| 阶段 B（Agent 评审循环） | **硬约束**：Outline 必须与冻结 Plan 的 `sceneSlots` 一致 |
+| 阶段 B（Agent 评审循环） | **硬约束**：Outline 必须与冻结 Plan 的 `sceneOutlines` 一致 |
 | 阶段 C（大纲编辑助手 + 手改） | **软约束（策略 A）**：允许修改后的 Outline **偏离**冻结 Plan；确认大纲前 UI **可选**提示「与 Plan 不一致」，**不阻断**用户确认 |
 
 用户主权：Plan 冻结后 Agent 不可改 Plan；用户若通过助手将大纲改到与 Plan 不一致，视为用户主动选择。
@@ -288,17 +289,17 @@ ingest?（有 PDF）
 复用 `chat_sessions` + `messages`（见 §6），不新建 `agent_events` 表：
 
 - `chat_sessions.session_type = 'outline'`，`course_id` 关联课程
-- 进入 `generation-preview` 时 `GET /api/courses/[id]/outline-session` 恢复历史消息
+- 进入 `generation-preview` 时 `GET /api/courses/[id]/chat-sessions?sessionType=outline` 恢复历史消息
 - `messages.metadata jsonb` 可选存 `{ toolName, toolArgs, outlineId }`
 
 ##### 3.1.2.5 API 与 SSE
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/courses/[id]/outline-session` | 获取或创建 `session_type=outline` 的 session 及历史 |
-| POST | `/api/courses/[id]/outline-chat` | 用户消息 → SSE 流式回复 + Tool 执行 |
+| GET | `/api/courses/[id]/chat-sessions?sessionType=outline` | 获取或创建 `session_type=outline` 的 session 及历史 |
+| POST | `/api/chat` | 用户消息 → SSE 流式回复 + Tool 执行 |
 
-**SSE 事件**（`/api/courses/[id]/outline-chat`）：
+**SSE 事件**（`/api/chat`，`config.sessionType: 'outline'`）：
 
 | type | 载荷 | 说明 |
 |------|------|------|
@@ -337,7 +338,7 @@ outlineAssistant: false,  // MVP 默认关；M2+ 完成后置 true
 
 | 阶段 | 交付 |
 |------|------|
-| **M2+** | `outline-tools.ts` + `outline-chat` API + preview 侧栏 UI + outline session 续跑 |
+| **M2+** | `outline-tools.ts` + `POST /api/chat（config.sessionType: 'outline'）` API + preview 侧栏 UI + outline session 续跑 |
 
 ---
 
@@ -402,12 +403,12 @@ outlineAssistant: false,  // MVP 默认关；M2+ 完成后置 true
 |-------------|--------------|
 | 页数、quiz 比例、知识点顺序在一次 prompt 中推断，不稳定 | 先 **Planner 出 Plan**，用户 **手改并冻结**，再 **执行 + 评审** |
 | 全自动改 Plan 与用户意图冲突 | **Human-in-the-loop 冻结**：Plan 确认后人与 Agent 均不可改 Plan（除非用户主动「重新规划」） |
-| 大纲与结构蓝图不一致 | **Critic 硬校验** Outline 与冻结 Plan 的 `sceneSlots` 对齐 |
+| 大纲与结构蓝图不一致 | **Critic 硬校验** Outline 与冻结 Plan 的 `sceneOutlines` 对齐 |
 | 生成与讨论两套 Agent 能力不对等 | **双编排域**：生成流水线（本节）+ 课堂讨论（M3，§3.3） |
 
 **成功标准（Phase 2）**：
 
-- 同一 `requirement` 跑 10 次，**冻结 Plan** 后产出的 Outline 与 `sceneSlots` 在页数、order、type 上一致率 ≥ 95%
+- 同一 `requirement` 跑 10 次，**冻结 Plan** 后产出的 Outline 与 `sceneOutlines` 在页数、order、type 上一致率 ≥ 95%
 - `revisionCount` 上限内（默认 3）`approve` 的比例 ≥ 70%
 - 超限失败时正确进入 `outline_generation_failed` 并报错展示 Critic 报告
 
@@ -415,11 +416,11 @@ outlineAssistant: false,  // MVP 默认关；M2+ 完成后置 true
 
 ```text
 阶段 A — Plan 规划（人可改）
-  ingest? → Planner → CurriculumPlan → 用户编辑 Plan 表格
-  → 【确认 Plan】→ plan_status = frozen
+  ingest? → Planner → sceneOutlines（蓝图） → 用户编辑 Plan 表格
+  → 【确认 Plan】→ `outline_confirmed_at` 已写入且蓝图只读
 
 阶段 B — 大纲评审循环（Plan 只读，Agent 自主）
-  Drafter(frozen_plan) → SceneOutline[]
+  Drafter(frozenSceneOutlines) → SceneOutline[]
   → Critic（是否符合 Plan？）
   → Director：redraft | approve（仅此二途 + 超限失败）
   → approve → 写入 outlines 表
@@ -431,18 +432,18 @@ outlineAssistant: false,  // MVP 默认关；M2+ 完成后置 true
 
 **Plan 冻结规则（硬约束）**：
 
-1. 用户点击「确认 Plan」后：`courses.plan_status = 'frozen'`，`plan_confirmed_at` 写入，`plan_version` 递增。
+1. 用户点击「确认 Plan」后：`outline_confirmed_at 写入`，`outline_confirmed_at` 写入，`generation_session_id` 递增。
 2. 冻结后 **用户不可再编辑 Plan 表格**（UI 只读），除非点击 **「重新规划」**。
 3. 阶段 B 循环中 **Agent 不得修改 Plan**；**禁用** `replan`、`ask_user`（改 Plan）路径。
-4. 「重新规划」：`plan_status = 'draft'` → 归档或清空当前 `outlines` → 回到阶段 A（新 `plan_version`）。
+4. 「重新规划」：`previewPhase = 'outline-ready'` → 归档或清空当前 `outlines` → 回到阶段 A（新 `generation_session_id`）。
 
 #### 3.5.3 Agent 角色
 
 | Agent ID | 角色 | 职责 |
 |----------|------|------|
-| `planner` | 课程规划师 | **仅阶段 A**：输出 `CurriculumPlan`（`sceneSlots`、constraints、`languageDirective`） |
+| `planner` | 课程规划师 | **仅阶段 A**：输出 `sceneOutlines` 蓝图 + `languageDirective` |
 | `drafter` | 大纲撰写员 | **阶段 B**：严格按 **冻结 Plan** 生成 / 修订 `SceneOutline[]`；收到 Critic issues 时 **只改 outline** |
-| `critic` | 结构评审 | **阶段 B**：校验 Outline 与冻结 Plan 一致性 + 文案质量；输出 `CriticReport` |
+| `critic` | 结构评审 | **阶段 B**：校验执行稿与冻结 `sceneOutlines` 一致性 + 文案质量 |
 | `director` | 流水线总监 | **阶段 B**：仅输出 `redraft` \| `approve`；**不得**输出 `replan` |
 
 Persona 与 prompt 独立于课堂 `teacher` / `student-a` / `student-b`（两套编排域）。
@@ -477,7 +478,7 @@ flowchart TB
 
 #### 3.5.5 参考循环（示例）
 
-**前提**：用户已确认 Plan——12 页，quiz 在 order 4、10；`plan_status = frozen`。
+**前提**：用户已确认 Plan——12 页，quiz 在 order 4、10；`outline_confirmed_at` 已写入且蓝图只读。
 
 **Round 1**
 
@@ -509,15 +510,15 @@ flowchart TB
 
 #### 3.5.6 Critic 一致性校验项（硬编码进 prompt + 可选规则预检）
 
-Critic **必须**检查 Outline 与冻结 `CurriculumPlan.sceneSlots` 的对齐：
+Critic **必须**检查 Outline 与冻结 `sceneOutlines（蓝图）.sceneOutlines` 的对齐：
 
 | 检查项 | 说明 |
 |--------|------|
-| 页数 | `outlines.length === sceneSlots.length` |
+| 页数 | `outlines.length === sceneOutlines.length` |
 | order | 每页 `order` 与 Plan 槽位一致 |
 | type | 每页 `type`（slide \| quiz）与 Plan 一致 |
 | 教学目标 | 每页 `teachingObjective` / `keyPoints` **覆盖** Plan 槽位要求 |
-| quiz 约束 | `quizCount`、`quizPositions` 与 `constraints` 一致 |
+| quiz 约束 | 蓝图中带 `type: 'quiz'` 的 `order` 与执行稿一致 |
 
 **实现建议**：
 
@@ -528,68 +529,43 @@ Critic **必须**检查 Outline 与冻结 `CurriculumPlan.sceneSlots` 的对齐�
 
 #### 3.5.7 核心数据结构
 
-**CurriculumPlan**（Planner 输出；**仅** `plan_status = 'draft'` 时可 PATCH）：
+**对齐 OpenMAIC**（`lib/types/generation.ts`、`app/generation-preview/types.ts`）：
 
 ```typescript
-interface CurriculumSceneSlot {
-  order: number;
-  type: 'slide' | 'quiz';
-  title: string;
-  teachingObjective: string;
-  keyPoints: string[];
-  estimatedDurationSec: number;
-  quizIntent?: 'recap' | 'check';
-}
+import type { SceneOutline, UserRequirements } from '@/lib/types/generation';
 
-interface CurriculumPlan {
-  title: string;
-  targetAudience: string;
-  totalDurationMin: number;
-  languageDirective: string;
-  learningObjectives: string[];
-  sceneSlots: CurriculumSceneSlot[];
-  constraints: {
-    slideCount: number;
-    quizCount: number;       // MVP 约束延续：1～2
-    quizPositions: number[];
-  };
-  sourceHints?: Array<{ topic: string; suggestedPages?: number[] }>;
+// 生成会话（客户端 sessionStorage；MindFlow 持久化映射 courses 表）
+interface GenerationSessionState {
+  sessionId: string;
+  requirements: UserRequirements;
+  pdfText?: string;
+  sceneOutlines?: SceneOutline[] | null;
+  previewPhase?: 'preparing' | 'outline-ready' | 'review' | 'generating-content';
+  languageDirective?: string;
 }
 ```
 
-**CriticReport**：
+**Phase 2 蓝图**（Planner 输出，存 `courses.scene_outlines`；**仅** `previewPhase = 'outline-ready'` 且 `outline_confirmed_at` 为空时可 PATCH）：
+
+- 类型仍为 `SceneOutline[]`，与 MVP 大纲一致（`order`、`type`、`title`、`description`、`keyPoints`、`teachingObjective` 等）
+- 冻结标志：`outline_confirmed_at` 非空后蓝图只读（Agent 与用户均不可改，除非 `POST /api/courses/[id]/replan`）
+
+**阶段 B SSE 载荷**（非独立 TypeScript 类型名，直接在事件中定义）：
 
 ```typescript
-interface CriticReport {
-  pass: boolean;
-  issues: Array<{
-    code: string;           // TYPE_MISMATCH | MISSING_OBJECTIVE | DUPLICATE_CONTENT | ...
-    severity: 'low' | 'medium' | 'high';
-    message: string;
-    affectedOrders?: number[];
-    requiresReplan?: boolean;  // true 时仅提示用户「重新规划」，Agent 不自动执行
-  }>;
-  summary: string;
-}
+// critic 事件 data
+{ pass: boolean; issues: Array<{ code: string; severity: string; message: string; affectedOrders?: number[] }>; summary: string }
+
+// director 事件 data（仅二途）
+{ next: 'redraft' | 'approve'; reason: string; focusOrders?: number[] }
 ```
 
-**DirectorDecision**（Phase 2 定稿：**仅二途**）：
+**图状态**（Phase 2 在 `POST /api/generate/scene-outlines-stream` `phase: 'execute'` 单次请求内多轮）：
 
-```typescript
-type DirectorNextAction = 'redraft' | 'approve';
+- `frozenSceneOutlines`（只读快照）、`sceneOutlines`、`criticReport`、`directorDecision`
+- `revisionCount`（当前轮次）、`revisionCountMax`（默认 **3**，`features.revisionCountMax`）
+- `requirements: UserRequirements`、`ragChunks`（有 PDF 时 Planner 阶段可 retrieve）
 
-interface DirectorDecision {
-  next: DirectorNextAction;
-  reason: string;
-  focusOrders?: number[];   // redraft 时建议重点修订的页
-}
-```
-
-**图状态**（LangGraph，`POST /api/generate/outline-from-plan` 单次请求内多轮）：
-
-- `frozenPlan`（只读快照）、`outlines`、`criticReport`、`directorDecision`
-- `revisionCount`（当前轮次）、`revisionCountMax`（默认 **3**，可配置）
-- `requirement`、`ragChunks`（有 PDF 时 Planner 阶段可 retrieve）
 
 #### 3.5.8 与 MVP / M2+ 的差异
 
@@ -600,38 +576,39 @@ interface DirectorDecision {
 | 大纲微调 | 手改 | + 大纲编辑助手（策略 A） | 同 M2+ |
 | Plan 能否被 Agent 改 | — | — | **否**（无 replan） |
 | 循环失败 | jsonrepair 重试 | — | `revisionCount` 超限 → **报错退出** |
-| 编排技术 | 无图 | AI SDK tools | `outline-graph.ts`（LangGraph） |
+| 编排技术 | 无图 | AI SDK tools | `outline-generator.ts` + `scene-outlines-stream/route.ts` |
 
 #### 3.5.9 API 与 SSE（Phase 2 扩展）
 
-**Plan 阶段（阶段 A）**：
+**阶段 A（蓝图规划）**——均复用 OpenMAIC 路由名，通过 body 分支：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/generate/curriculum-plan` | Planner 生成 `CurriculumPlan` → 写入 `courses.curriculum_plan` |
-| GET | `/api/courses/[id]/curriculum-plan` | 读取 Plan + `plan_status` |
-| PATCH | `/api/courses/[id]/curriculum-plan` | **仅 `plan_status=draft`** 时用户编辑 Plan |
-| POST | `/api/courses/[id]/curriculum-plan/confirm` | 冻结 Plan：`plan_status=frozen`，`plan_confirmed_at`，`plan_version++` |
-| POST | `/api/courses/[id]/curriculum-plan/replan` | 解冻并回到阶段 A：`plan_status=draft`；可选归档 outlines |
+| POST | `/api/generate/scene-outlines-stream` | body `{ outlineOrchestration: true, phase: 'plan' }` → `generateSceneOutlinesFromRequirements` 变体写入 `courses.scene_outlines` |
+| GET | `/api/courses/[id]` | 读取 `sceneOutlines`、`previewPhase`、`outlineConfirmedAt` |
+| PATCH | `/api/courses/[id]` | **仅蓝图未冻结**时用户编辑 `sceneOutlines` |
+| PATCH | `/api/courses/[id]` | 冻结蓝图：写入 `outlineConfirmedAt`，`generationSessionId++` |
+| POST | `/api/courses/[id]/replan` | 解冻并回到阶段 A：清空 `outlineConfirmedAt`，`previewPhase: 'outline-ready'` |
 
-**大纲执行阶段（阶段 B）**：
+**阶段 B（评审循环）**：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/generate/outline-from-plan` | 对 **已冻结** Plan 启动 Drafter→Critic→Director 循环（SSE） |
+| POST | `/api/generate/scene-outlines-stream` | body `{ outlineOrchestration: true, phase: 'execute' }` → Drafter→Critic→Director（SSE） |
 
-MVP 路径 `POST /api/generate/outlines-stream` 在 `features.outlineOrchestration=false` 时保留不变。
+MVP 路径 `POST /api/generate/scene-outlines-stream`（`outlineOrchestration=false`）保持不变。
 
-**阶段 B SSE 事件**（`/api/generate/outline-from-plan`）：
+**阶段 B SSE 事件**（`/api/generate/scene-outlines-stream`，`phase: 'execute'`）：
 
 | type | 载荷 | 说明 |
 |------|------|------|
 | `phase` | `{ phase: 'drafting' \| 'critiquing' \| 'directing', round: number }` | 步骤与轮次 |
 | `outline` | `{ data: SceneOutline, index: number }` | Drafter 流式条目 |
-| `critic` | `{ data: CriticReport, round: number }` | 每轮评审 |
-| `director` | `{ data: DirectorDecision, round: number }` | 路由决策 |
+| `critic` | `{ data: critic SSE 载荷, round: number }` | 每轮评审 |
+| `director` | `{ data: director SSE 载荷, round: number }` | 路由决策 |
 | `done` | `{ outlines, languageDirective, revisionRounds }` | approve 成功 |
 | `error` | `{ error, criticReport?, revisionCount, code?: 'REVISION_LIMIT_EXCEEDED' }` | 含超限失败 |
+
 
 #### 3.5.10 页面（generation-preview 扩展）
 
@@ -643,7 +620,7 @@ MVP 路径 `POST /api/generate/outlines-stream` 在 `features.outlineOrchestrati
 
 **Phase 2 UI 要点**：
 
-- Plan 表格：`sceneSlots` 可增删改（**仅 draft**）；冻结后只读 + 「重新规划」按钮
+- Plan 表格：`sceneOutlines` 可增删改（**仅 draft**）；冻结后只读 + 「重新规划」按钮
 - Round 卡片：展示每轮 Critic 摘要、Director 决策（`redraft` / `approve`）
 - 失败态：`outline_generation_failed` 时展示 Critic 最后一版报告 + 「重新规划」
 
@@ -653,9 +630,9 @@ MVP 路径 `POST /api/generate/outlines-stream` 在 `features.outlineOrchestrati
 |----|------|
 | 编排 | LangGraph `StateGraph`（阶段 B） |
 | LLM | Vercel AI SDK（`generateObject` / `streamText`） |
-| 模块 | `outline-graph.ts`、`curriculum-planner.ts`、`outline-drafter.ts`、`outline-critic.ts`、`outline-director.ts` |
+| 模块 | `lib/generation/outline-generator.ts`（`generateSceneOutlinesFromRequirements`、Critic/Director 节点）；`app/api/generate/scene-outlines-stream/route.ts`（`phase: 'plan' \| 'execute'` 分支） |
 | 大纲助手 | `outline-tools.ts`（§3.1.2，AI SDK tools，与 LangGraph **分离**） |
-| Prompt | `curriculum-planner/`、`outline-from-plan/`、`outline-critic/`、`outline-director/` |
+| Prompt | `requirements-to-outlines/`、`scene-outlines-stream/`、`outline-critic/`、`outline-director/` |
 | 开关 | `outlineOrchestration: false`（默认）；`outlineAssistant: false`（默认） |
 
 **刻意不做**（与 OpenMAIC Pro 区分）：
@@ -726,7 +703,7 @@ SettingsDialog          顶栏设置按钮打开的弹窗（API Key、模型、e
 
 | 模式 | 步骤 |
 |------|------|
-| **MVP**（默认） | `ingest?` → `生成大纲（outlines-stream）` → `确认大纲` → `生成首屏` |
+| **MVP**（默认） | `ingest?` → `生成大纲（scene-outlines-stream）` → `确认大纲` → `生成首屏` |
 | **M2+** | MVP 大纲完成后 → `大纲编辑助手（可选）` → `确认大纲` → `生成首屏` |
 | **Phase 2** | `ingest?` → `生成 Plan` → `编辑 Plan` → `确认 Plan（冻结）` → `生成与评审大纲（Round UI）` → `大纲助手（可选）` → `确认大纲` → `生成首屏` |
 
@@ -738,14 +715,14 @@ SettingsDialog          顶栏设置按钮打开的弹窗（API Key、模型、e
 
 **Phase 2 子路径（`outlineOrchestration=true`）**：
 
-- ingest 后 `POST /api/generate/curriculum-plan` → 用户编辑 `sceneSlots` 表格（`plan_status=draft`）
-- 「确认 Plan」→ `POST .../curriculum-plan/confirm` 冻结 → `POST /api/generate/outline-from-plan`（SSE 展示 Round）
+- ingest 后 `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'plan' }`）` → 用户编辑 `sceneOutlines` 表格（``previewPhase: 'outline-ready'``）
+- 「确认 Plan」→ `POST .../outlines/confirm（设置 outlineConfirmedAt）` 冻结 → `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'execute' }`）`（SSE 展示 Round）
 - `approve` 或失败后进入大纲区；失败态见 §3.5.5
 
 **大纲区行为**：
 
 - SSE 流式卡片列表或从 DB 加载；`OutlinesEditor` 可手改 title/description/keyPoints
-- `features.outlineAssistant` 开启时：侧栏 `outline-chat`，`outlines_updated` 事件刷新列表
+- `features.outlineAssistant` 开启时：侧栏 `POST /api/chat（config.sessionType: 'outline'）`，`outlines_updated` 事件刷新列表
 - 确认大纲：`PATCH /api/courses/[id]/outlines`；若 Outline 与冻结 Plan 不一致，**策略 A** 下仅可选警告，不阻断
 - 首屏 scene 生成完成后：`router.push('/classroom/[id]')`
 - **顶栏**：返回首页、「重新规划」（Phase 2 且已冻结时）、`SettingsDialog`
@@ -758,7 +735,7 @@ SettingsDialog          顶栏设置按钮打开的弹窗（API Key、模型、e
 - **底栏/侧栏**：讲稿字幕（当前 speech 文本）。
 - **右栏**：讨论区（消息列表 + 输入框 + **引用来源**折叠块）。
 - **顶栏**：播放/暂停、上一场景/下一场景（讨论进行中可禁用切换）、`SettingsDialog` 按钮。
-- 后台：调用 `POST /api/courses/[id]/generate-remaining` 续生成剩余场景（与 OpenMAIC 课堂内续生成一致）。
+- 后台：调用 ``useSceneGenerator().generateRemaining`（`lib/hooks/use-scene-generator.ts`）` 续生成剩余场景（与 OpenMAIC 课堂内续生成一致）。
 
 #### 设置 `SettingsDialog`（`components/settings/`，非路由）
 
@@ -840,11 +817,11 @@ flowchart TB
 1. 首页 `POST /api/courses`：body `{ requirement?, pdf? }`，**至少其一**；有 pdf 则存 `documents`；返回 `courseId`。
 2. 首页写入 `sessionStorage.generationSession` → 导航 `/generation-preview`。
 3. 生成预览页 **若有 PDF**：`POST /api/courses/[id]/ingest` → parse → chunk → embed → `has_knowledge_base=true`。
-4. `POST /api/generate/outlines-stream`（`outlineOrchestration=false`）：
+4. `POST /api/generate/scene-outlines-stream`（`outlineOrchestration=false`）：
    - 仅提示词：`requirement` → LLM 大纲；
    - 仅 PDF：`pdfExcerpt` + 自动 `languageDirective` → LLM 大纲；
    - 二者：`requirement` + RAG topK 或 pdf 摘要 → LLM 大纲。
-5. **（M2+，可选）** `POST /api/courses/[id]/outline-chat`：大纲编辑助手 Tool 修改 `outlines`（§3.1.2）。
+5. **（M2+，可选）** `POST /api/chat`：大纲编辑助手 Tool 修改 `outlines`（§3.1.2）。
 6. `PATCH /api/courses/[id]/outlines`：用户确认大纲。
 7. 对每个 outline（首屏先 1 个）：`scene-content` → `scene-actions` → 写 `scenes`。
 8. 首屏完成后导航 `/classroom/[id]`；课堂页轮询或 SSE 续生成剩余 scenes。
@@ -852,10 +829,10 @@ flowchart TB
 **生成链路（Phase 2，`outlineOrchestration=true`）**
 
 1. 步骤 1～3 同 MVP。
-2. `POST /api/generate/curriculum-plan` → Planner 写入 `courses.curriculum_plan`，`plan_status=draft`。
-3. 用户 `PATCH /api/courses/[id]/curriculum-plan` 编辑 Plan 表格。
-4. `POST /api/courses/[id]/curriculum-plan/confirm` → **`plan_status=frozen`**（此后 Agent 不可改 Plan）。
-5. `POST /api/generate/outline-from-plan`（SSE）：
+2. `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'plan' }`）` → Planner 写入 `courses.scene_outlines`，``previewPhase: 'outline-ready'``。
+3. 用户 `PATCH /api/courses/[id]` 编辑 sceneOutlines 蓝图（OutlinesEditor）。
+4. `PATCH /api/courses/[id]`（写入 `outlineConfirmedAt`）→ 蓝图冻结（此后 Agent 不可改 `sceneOutlines` 蓝图）。
+5. `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'execute' }`）`（SSE）：
    - Drafter 按冻结 Plan 生成 `SceneOutline[]`
    - Critic 校验与 Plan 一致性 → Director `redraft` \| `approve`
    - `revisionCount` 达上限仍失败 → `outline_generation_failed` + SSE `error`（§3.5.5）
@@ -883,10 +860,10 @@ courses (
   language_directive text,
   has_knowledge_base boolean DEFAULT false,
   status text,                   -- draft | generating | outline_generation_failed | ready | failed
-  curriculum_plan jsonb NULL,    -- Phase 2：CurriculumPlan 全文
-  plan_status text DEFAULT 'none', -- none | draft | frozen（Phase 2）
-  plan_version int DEFAULT 0,    -- 每次「重新规划」递增
-  plan_confirmed_at timestamptz NULL,
+  scene_outlines jsonb NULL,    -- Phase 2：sceneOutlines（蓝图） 全文
+  preview_phase text DEFAULT 'preparing', -- `preparing` \| `outline-ready` \| `review` \| `generating-content`（对齐 `GenerationSessionState.previewPhase`）（Phase 2）
+  generation_session_id int DEFAULT 0,    -- 每次「重新规划」递增
+  outline_confirmed_at timestamptz NULL,
   created_at timestamptz,
   updated_at timestamptz
 )
@@ -987,28 +964,25 @@ agents (
 |------|------|------|
 | POST | `/api/courses` | 创建课程：`requirement?` 与 `pdf?`（multipart）**至少其一** |
 | GET | `/api/courses` | 课程列表 |
-| GET | `/api/courses/[id]` | 详情含 outlines/scenes 状态 |
+| GET | `/api/courses/[id]` | 详情：`sceneOutlines`、`previewPhase`、`outlines`、`scenes` 状态 |
+| PATCH | `/api/courses/[id]` | 更新 `sceneOutlines` / `previewPhase`；冻结蓝图时写 `outlineConfirmedAt` |
+| POST | `/api/courses/[id]/replan` | Phase 2：解冻蓝图，回到阶段 A |
 | POST | `/api/courses/[id]/ingest` | 有 PDF 时解析并入库 RAG；无文档返回 400 |
-| POST | `/api/generate/outlines-stream` | SSE 流式大纲（MVP；`outlineOrchestration=false`） |
-| POST | `/api/generate/curriculum-plan` | Phase 2：Planner 生成 Plan |
-| GET | `/api/courses/[id]/curriculum-plan` | 读取 Plan + `plan_status` |
-| PATCH | `/api/courses/[id]/curriculum-plan` | 编辑 Plan（**仅 `draft`**） |
-| POST | `/api/courses/[id]/curriculum-plan/confirm` | 冻结 Plan |
-| POST | `/api/courses/[id]/curriculum-plan/replan` | 解冻，回到阶段 A |
-| POST | `/api/generate/outline-from-plan` | Phase 2：对已冻结 Plan 执行 Drafter→Critic→Director（SSE） |
-| GET | `/api/courses/[id]/outline-session` | M2+：大纲助手 session + 历史消息 |
-| POST | `/api/courses/[id]/outline-chat` | M2+：大纲编辑助手 SSE + Tool |
-| PATCH | `/api/courses/[id]/outlines` | 用户确认/编辑大纲 |
+| POST | `/api/parse-pdf` | 对齐 OpenMAIC PDF 解析 |
+| POST | `/api/generate/scene-outlines-stream` | SSE 流式大纲（MVP；Phase 2 通过 body `phase` 分支） |
+| PATCH | `/api/courses/[id]/outlines` | 用户确认/编辑执行稿大纲（`outlines` 表） |
 | POST | `/api/generate/scene-content` | 单页内容生成 |
 | POST | `/api/generate/scene-actions` | 单页 actions + 组装 scene |
-| POST | `/api/courses/[id]/generate-remaining` | 触发或查询续生成 |
-| POST | `/api/chat` | 多 Agent SSE 讨论 |
-| POST | `/api/quiz/grade` | 简答题批改 |
+| POST | `/api/chat` | 课堂多 Agent SSE；M2+ 大纲助手（`config.sessionType: 'outline'`） |
+| GET | `/api/courses/[id]/chat-sessions` | M2+：获取 `sessionType=outline` 的历史消息 |
+| POST | `/api/quiz-grade` | 简答题批改 |
 | GET | `/api/health` | 健康检查 |
+
+> **续生成**：无独立 API；课堂页调用 `useSceneGenerator().generateRemaining`（`lib/hooks/use-scene-generator.ts`），与 OpenMAIC 一致。
 
 ### 7.1 SSE 事件
 
-**大纲流**（`/api/generate/outlines-stream`）：
+**大纲流**（`/api/generate/scene-outlines-stream`）：
 
 | type | 载荷 |
 |------|------|
@@ -1019,18 +993,18 @@ agents (
 | `error` | `{ error: string }` |
 | `retry` | `{ attempt, maxAttempts }` |
 
-**大纲评审流**（`/api/generate/outline-from-plan`，Phase 2）：
+**大纲评审流**（`/api/generate/scene-outlines-stream`，Phase 2）：
 
 | type | 载荷 |
 |------|------|
 | `phase` | `{ phase: 'drafting' \| 'critiquing' \| 'directing', round: number }` |
 | `outline` | `{ data: SceneOutline, index: number }` |
-| `critic` | `{ data: CriticReport, round: number }` |
-| `director` | `{ data: DirectorDecision, round: number }` |
+| `critic` | `{ data: critic SSE 载荷, round: number }` |
+| `director` | `{ data: director SSE 载荷, round: number }` |
 | `done` | `{ outlines, languageDirective, revisionRounds }` |
 | `error` | `{ error, criticReport?, revisionCount, code?: 'REVISION_LIMIT_EXCEEDED' }` |
 
-**大纲编辑助手流**（`/api/courses/[id]/outline-chat`，M2+）：
+**大纲编辑助手流**（`/api/chat`，M2+）：
 
 | type | 载荷 |
 |------|------|
@@ -1104,7 +1078,7 @@ pdf: <file>
 - 触发：
   - 每次 `/api/chat` 用户消息；
   - 大纲生成时（模式 B/C）：对 `requirement` 或 PDF 主题做 retrieve；
-  - Phase 2 Planner 阶段（可选）：为 `CurriculumPlan.sourceHints` 提供素材引用。
+  - Phase 2 Planner 阶段（可选）：为 `sceneOutlines（蓝图）.sourceHints` 提供素材引用。
 - 无知识库：`retrieve` 返回 `[]`，不报错。
 - topK：5～8；可选相似度阈值（如 cosine > 0.7）。
 - 过滤：**必须**带 `course_id`，防止跨课程泄漏。
@@ -1144,7 +1118,7 @@ interface SourceRef {
 - 读取 `scenes[].actions`，按序执行。
 - `speech`：更新字幕区；`estimateReadDuration(text)` 后自动下一步。
 - `discussion`：暂停播放；弹「是否加入讨论」；确认后聚焦讨论面板。
-- `quiz`：暂停自动播放；展示答题 UI；提交后可调 `/api/quiz/grade`。
+- `quiz`：暂停自动播放；展示答题 UI；提交后可调 `/api/quiz-grade`。
 - 场景切换：重置播放状态；可选结束当前 chat session。
 
 ### 9.2 阅读节奏（无 TTS）
@@ -1169,7 +1143,7 @@ function estimateReadDuration(text: string): number;
 | 性能 | 首屏 scene P95 < 60s（视模型） |
 | 安全 | API Key 仅服务端；PDF ≤ 50MB；上传类型校验 |
 | 隐私 | 课程数据按 `course_id` 隔离；RAG 检索强制 `course_id` 过滤 |
-| 可观测 | 结构化日志：courseId、sceneId、retrieveMs、tokenUsage、`plan_version`、`revisionCount`、`directorDecision` |
+| 可观测 | 结构化日志：courseId、sceneId、retrieveMs、tokenUsage、`generation_session_id`、`revisionCount`、`directorDecision` |
 | 可用性 | 生成失败可重试单页；ingest 失败可提示补提示词 |
 | 许可 | 独立仓库；参考 OpenMAIC 架构须在 README 致谢 |
 
@@ -1182,7 +1156,7 @@ function estimateReadDuration(text: string): number;
 | M0 | 3 天 | 仓库脚手架、Postgres+pgvector、Drizzle schema、Docker Compose |
 | M1 | 1 周 | 双路径：纯提示词聊天 + PDF ingest/retrieve/带引用 |
 | M2 | 1 周 | 大纲 SSE + slide 生成 + 课堂播放壳 |
-| M2+ | 3～4 天 | 大纲编辑助手（§3.1.2）：`outline-chat` + Tool + preview 侧栏 |
+| M2+ | 3～4 天 | 大纲编辑助手（§3.1.2）：`POST /api/chat（config.sessionType: 'outline'）` + Tool + preview 侧栏 |
 | M3 | 1 周 | quiz 场景 + 固定 3 Agent Director |
 | M4 | 3 天 | 续生成、错误重试、`SettingsDialog`、README + 演示录屏 |
 
@@ -1435,12 +1409,12 @@ export const features = {
 flowchart TB
   subgraph mvp [MVP_M2]
     R[requirement]
-    O1[outlines-stream单次LLM]
+    O1[scene-outlines-stream单次LLM]
     R --> O1
   end
 
   subgraph m2plus [M2plus_3_1_2]
-    OA[outline-chat_Tool助手]
+    OA[POST /api/chat（config.sessionType: 'outline'）_Tool助手]
   end
 
   subgraph p2 [Phase2_3_5]
@@ -1468,12 +1442,37 @@ flowchart TB
 | 能力 | 实现位置 | 技术 |
 |------|----------|------|
 | Plan-and-Execute | Phase 2 阶段 A→B | `generateObject` + 冻结 Plan |
-| Critic 闭环 | Phase 2 阶段 B | LangGraph + `CriticReport` |
+| Critic 闭环 | Phase 2 阶段 B | `outline-generator.ts` + `scene-outlines-stream` SSE |
 | 有界循环 | `revisionCountMax` | 超限 SSE `REVISION_LIMIT_EXCEEDED` |
 | Tool Calling | M2+ 大纲助手 | AI SDK `streamText` + tools |
 | 多 Agent 讨论 | M3 classroom | LangGraph Director + 无状态 `/api/chat` |
 | RAG | M1 ingest + M3 chat | pgvector retrieve |
 | Human-in-the-loop | Plan 冻结 + 策略 A | 用户确认 Plan；大纲可偏离 Plan |
+
+---
+
+### 13.11 OpenMAIC 命名对齐表
+
+MindFlow 在 Postgres 持久化层扩展 OpenMAIC 客户端类型，**不另起模块名/类型名**：
+
+| OpenMAIC（原项目） | MindFlow 持久化 / 用法 |
+|--------------------|------------------------|
+| `UserRequirements`（`lib/types/generation.ts`） | `courses.requirement` + 可选 `userNickname` 等字段 |
+| `SceneOutline` | `outlines.payload`；Phase 2 蓝图存 `courses.scene_outlines` |
+| `SceneOutline[]` / `sceneOutlines` | `GenerationSessionState.sceneOutlines`；API 字段名 `sceneOutlines` |
+| `GenerationSessionState.previewPhase` | `courses.preview_phase`（枚举值完全一致） |
+| `languageDirective` | `courses.language_directive` |
+| `generateSceneOutlinesFromRequirements` | `lib/generation/outline-generator.ts` |
+| `POST /api/generate/scene-outlines-stream` | 同路径；`outlineOrchestration` / `phase` 为 MindFlow body 扩展 |
+| `POST /api/generate/scene-content` | 同路径 |
+| `POST /api/generate/scene-actions` | 同路径 |
+| `POST /api/chat` | 同路径；`config.sessionType` 扩展 `'outline'`（M2+） |
+| `DirectorState`（`lib/types/chat.ts`） | 课堂讨论客户端维护；**不**用于大纲评审循环 |
+| `useSceneGenerator().generateRemaining` | 客户端续生成；**无** `/api/.../generateRemaining` |
+| `OutlinesEditor` | `components/generation/outlines-editor.tsx` |
+| `lib/orchestration/director-graph.ts` | **仅**课堂讨论 LangGraph |
+| Phase 2 大纲评审 | `outline-generator.ts` + `scene-outlines-stream/route.ts`（**不**新建 `outline-graph.ts`） |
+
 
 ---
 
