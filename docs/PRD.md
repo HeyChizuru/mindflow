@@ -27,7 +27,7 @@
 - [12. 风险与缓解](#12-风险与缓解)
 - [13. 附录](#13-附录)
 
-相关文档：[ARCHITECTURE.md](./ARCHITECTURE.md)（v1.3） · [DEV_GUIDE.md](./DEV_GUIDE.md)（v1.2，实施手册）
+相关文档：[ARCHITECTURE.md](./ARCHITECTURE.md)（v1.3） · [DEV_GUIDE.md](./DEV_GUIDE.md)（v1.2，实施手册） · [DATA-MODEL.md](./DATA-MODEL.md)（数据模型定稿） · [ARCHITECTURE-data.md](./ARCHITECTURE-data.md)（OpenMAIC 数据结构全景）
 
 ---
 
@@ -41,6 +41,8 @@
 | v1.3 | 2026-09-07 | 明确 MVP 固定生成流水线及 `outlineOrchestration` 切换策略（[3.1.1 节](#311-生成流水线策略mvp-固定流程--phase-2-可切换)） |
 | v1.4 | 2026-09-07 | 定稿生成域三阶段：冻结 Plan → Agent 评审循环 → 大纲编辑助手 |
 | v1.5 | 2026-09-08 | **命名对齐 OpenMAIC 0.2.x**：API/类型/模块名与 `lib/types/generation.ts`、`scene-outlines-stream`、`use-scene-generator` 等一致；见 [§13.11](#1311-openmaic-命名对齐表) |
+| v1.6 | 2026-09-08 | **数据模型定稿**：6 张表（`stage` / `scenes` / `chat_sessions` / `chat_messages` / `documents` / `chunks`）；大纲存 `stage.outlines` / `stage.scene_outlines` JSONB，**不建** `outlines` / `agents` / `chunk_embeddings` 表；API 根路径统一为 `/api/stages`；详见 [§6](#6-数据模型) 与 [DATA-MODEL.md](./DATA-MODEL.md) |
+| v1.7 | 2026-09-08 | **大纲与 Plan 生命周期定稿**：三态存储（sessionStorage → stage JSONB 工作副本 → scenes 终态）；SSE `done` 后落库；scene 全 `ready` 后默认保留 `outlines`；见 [§6.1.4](#614-大纲与-plan-生命周期) |
 
 ---
 
@@ -248,7 +250,7 @@ ingest?（有 PDF）
 
 ##### 3.1.2.1 产品定位
 
-在「大纲已写入 `outlines` 表」与「用户点击确认大纲、开始 scene 生成」之间，增加 **可选聊天侧栏**，用 Vercel AI SDK **Tool Calling** 辅助修改大纲。
+在「大纲已写入 `stage.outlines` JSONB」与「用户点击确认大纲、开始 scene 生成」之间，增加 **可选聊天侧栏**，用 Vercel AI SDK **Tool Calling** 辅助修改大纲。
 
 **不是**：
 
@@ -258,7 +260,7 @@ ingest?（有 PDF）
 
 **是**：
 
-- 用户说「把第 2 页改成 quiz」→ 调用 `revise_outline` 等 tool → 写 `outlines` 表 → 右侧 `OutlinesEditor` 刷新
+- 用户说「把第 2 页改成 quiz」→ 调用 `revise_outline` 等 tool → PATCH `stage.outlines` → 右侧 `OutlinesEditor` 刷新
 - 轻量 API + 少量 tool，**不引入**独立 Worker / 事件溯源系统
 
 ##### 3.1.2.2 与冻结 Plan 的关系（策略 A：软约束）
@@ -276,27 +278,27 @@ ingest?（有 PDF）
 
 | Tool | 说明 |
 |------|------|
-| `list_outlines` | 读取当前课程 `outlines` 列表摘要 |
+| `list_outlines` | 读取当前 stage 的 `outlines` JSONB 列表摘要 |
 | `revise_outline` | 按 `order` 或 `id` 修改 title / description / keyPoints / type |
 | `insert_outline` | 在指定 order 后插入一页 |
 | `delete_outline` | 删除指定页并重排 order |
 
 - 使用 `streamText({ tools, maxSteps: 3 })`；**不使用** pi-agent-core。
-- Tool `execute` **仅写 `outlines` 表**，不调用 `scene-content`。
+- Tool `execute` **仅 PATCH `stage.outlines` JSONB**（见 §6.3），不调用 `scene-content`。
 
 ##### 3.1.2.4 Session 与续跑
 
-复用 `chat_sessions` + `messages`（见 §6），不新建 `agent_events` 表：
+复用 `chat_sessions` + `chat_messages`（见 §6），不新建 `agent_events` 表：
 
-- `chat_sessions.session_type = 'outline'`，`course_id` 关联课程
-- 进入 `generation-preview` 时 `GET /api/courses/[id]/chat-sessions?sessionType=outline` 恢复历史消息
-- `messages.metadata jsonb` 可选存 `{ toolName, toolArgs, outlineId }`
+- `chat_sessions.session_type = 'outline'`，`stage_id` 关联课堂
+- 进入 `generation-preview` 时 `GET /api/stages/[id]/chat-sessions?sessionType=outline` 恢复历史消息
+- `chat_messages.metadata jsonb` 可选存 `{ toolName, toolArgs, outlineId }`
 
 ##### 3.1.2.5 API 与 SSE
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/courses/[id]/chat-sessions?sessionType=outline` | 获取或创建 `session_type=outline` 的 session 及历史 |
+| GET | `/api/stages/[id]/chat-sessions?sessionType=outline` | 获取或创建 `session_type=outline` 的 session 及历史 |
 | POST | `/api/chat` | 用户消息 → SSE 流式回复 + Tool 执行 |
 
 **SSE 事件**（`/api/chat`，`config.sessionType: 'outline'`）：
@@ -423,7 +425,7 @@ outlineAssistant: false,  // MVP 默认关；M2+ 完成后置 true
   Drafter(frozenSceneOutlines) → SceneOutline[]
   → Critic（是否符合 Plan？）
   → Director：redraft | approve（仅此二途 + 超限失败）
-  → approve → 写入 outlines 表
+  → approve → 写入 stage.outlines JSONB
 
 阶段 C — 大纲微调（人主导，策略 A）
   大纲编辑助手（可选，§3.1.2）+ OutlinesEditor 手改
@@ -584,11 +586,11 @@ interface GenerationSessionState {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/generate/scene-outlines-stream` | body `{ outlineOrchestration: true, phase: 'plan' }` → `generateSceneOutlinesFromRequirements` 变体写入 `courses.scene_outlines` |
-| GET | `/api/courses/[id]` | 读取 `sceneOutlines`、`previewPhase`、`outlineConfirmedAt` |
-| PATCH | `/api/courses/[id]` | **仅蓝图未冻结**时用户编辑 `sceneOutlines` |
-| PATCH | `/api/courses/[id]` | 冻结蓝图：写入 `outlineConfirmedAt`，`generationSessionId++` |
-| POST | `/api/courses/[id]/replan` | 解冻并回到阶段 A：清空 `outlineConfirmedAt`，`previewPhase: 'outline-ready'` |
+| POST | `/api/generate/scene-outlines-stream` | body `{ outlineOrchestration: true, phase: 'plan' }` → Planner 变体写入 `stage.scene_outlines` |
+| GET | `/api/stages/[id]` | 读取 `sceneOutlines`、`previewPhase`、`outlines`、`outlineConfirmedAt` |
+| PATCH | `/api/stages/[id]` | **仅蓝图未冻结**时用户编辑 `sceneOutlines`（`stage.scene_outlines`） |
+| PATCH | `/api/stages/[id]` | 冻结蓝图：写入 `outlineConfirmedAt`，`generationSessionId++` |
+| POST | `/api/stages/[id]/replan` | 解冻并回到阶段 A：清空 `outlineConfirmedAt`，`previewPhase: 'outline-ready'` |
 
 **阶段 B（评审循环）**：
 
@@ -646,7 +648,7 @@ MVP 路径 `POST /api/generate/scene-outlines-stream`（`outlineOrchestration=fa
 | 阶段 | 依赖 | 交付 |
 |------|------|------|
 | **M2+** | M2 完成 | 大纲编辑助手（§3.1.2） |
-| **P2a** | M4 完成 | Planner + Plan 表格 + 冻结 / 重新规划 API |
+| **P2a** | M4 完成 | Planner + `OutlinesEditor` 编辑 `sceneOutlines` 蓝图 + 冻结 / `replan` API |
 | **P2b** | P2a | Drafter + Critic + Director 循环 API（无 replan）+ SSE Round UI |
 | **P2c** | P2b | `revisionCount` 超限失败态 + Critic 规则预检 |
 | **P2d** | P2c | `eval/outline-orchestration`（10 主题通过率） |
@@ -690,13 +692,13 @@ SettingsDialog          顶栏设置按钮打开的弹窗（API Key、模型、e
 - 输入：**课程提示词（可选，多行）**——主题、受众、时长、风格等。
 - 输入：**PDF 文件（可选，≤50MB）**——作为知识库与/或唯一素材。
 - 校验：**提示词与 PDF 至少填一项**；UI 文案：「可只填需求、只上传 PDF，或两者都提供」。
-- 操作：`POST /api/courses` 创建课程 → 将 `courseId`、`requirement`、PDF 元数据写入 `sessionStorage.generationSession`（与 OpenMAIC 模式一致）→ `router.push('/generation-preview')`。
-- 列表：最近课程（标题、是否有知识库图标、状态、创建时间）；点击条目 → `router.push('/classroom/[id]')`。
+- 操作：`POST /api/stages` 创建课堂 → 将 `stageId`、`requirement`、PDF 元数据写入 `sessionStorage.generationSession`（与 OpenMAIC 模式一致）→ `router.push('/generation-preview')`。
+- 列表：最近课堂（标题、是否有知识库图标、状态、创建时间）；点击条目 → `router.push('/classroom/[id]')`。
 - **顶栏**：`SettingsDialog` 触发按钮（齿轮图标）。
 
 #### 生成预览页 `/generation-preview`（`app/generation-preview/page.tsx`）
 
-- 从 `sessionStorage.generationSession` 读取 `courseId` 与输入；缺失时重定向 `/`。
+- 从 `sessionStorage.generationSession` 读取 `stageId` 与输入；缺失时重定向 `/`。
 - **布局**：左侧可选「大纲编辑助手」聊天侧栏（`features.outlineAssistant`）+ 右侧 `OutlinesEditor`（见 §3.1.2.6）；Phase 2 增加 Plan 表格步骤（见 §3.5.10）。
 
 **步骤指示（按功能开关动态组合）**：
@@ -723,13 +725,13 @@ SettingsDialog          顶栏设置按钮打开的弹窗（API Key、模型、e
 
 - SSE 流式卡片列表或从 DB 加载；`OutlinesEditor` 可手改 title/description/keyPoints
 - `features.outlineAssistant` 开启时：侧栏 `POST /api/chat（config.sessionType: 'outline'）`，`outlines_updated` 事件刷新列表
-- 确认大纲：`PATCH /api/courses/[id]/outlines`；若 Outline 与冻结 Plan 不一致，**策略 A** 下仅可选警告，不阻断
+- 确认大纲：`POST /api/stages/[id]/outlines/confirm`（`outlines_status = confirmed`，触发 scene 生成，见 §6.1.4）；手改期间用 `PATCH /api/stages/[id]/outlines`
 - 首屏 scene 生成完成后：`router.push('/classroom/[id]')`
 - **顶栏**：返回首页、「重新规划」（Phase 2 且已冻结时）、`SettingsDialog`
 
 #### 课堂页 `/classroom/[id]`（`app/classroom/[id]/page.tsx`）
 
-- 按 URL `id` 从 Postgres 加载课程与场景；无数据时展示错误态。
+- 按 URL `id` 从 Postgres 加载 `stage` 与 `scenes`；无数据时展示错误态。
 - **左栏**：场景列表（含生成中骨架、失败重试）。
 - **中栏**：slide/quiz 渲染器（只读）。
 - **底栏/侧栏**：讲稿字幕（当前 speech 文本）。
@@ -791,10 +793,10 @@ flowchart TB
   end
 
   subgraph data [Postgres_pgvector]
-    Courses[(courses)]
-    Chunks[(chunks_embeddings)]
-    Scenes[(scenes_outlines)]
-    Messages[(chat_messages)]
+    StageTbl[(stage)]
+    ChunksTbl[(chunks)]
+    ScenesTbl[(scenes)]
+    ChatMsgs[(chat_messages)]
   end
 
   Pages --> api
@@ -803,8 +805,8 @@ flowchart TB
   ParseAPI --> Knowledge
   IngestAPI --> Knowledge
   OutlineAPI --> Generation
-  Knowledge --> Chunks
-  Generation --> Courses
+  Knowledge --> ChunksTbl
+  Generation --> StageTbl
   ChatAPI --> Orchestration
   Orchestration --> Knowledge
   api --> data
@@ -814,34 +816,35 @@ flowchart TB
 
 **生成链路（MVP）**
 
-1. 首页 `POST /api/courses`：body `{ requirement?, pdf? }`，**至少其一**；有 pdf 则存 `documents`；返回 `courseId`。
+1. 首页 `POST /api/stages`：body `{ requirement?, pdf? }`，**至少其一**；有 pdf 则存 `documents`；返回 `stageId`。
 2. 首页写入 `sessionStorage.generationSession` → 导航 `/generation-preview`。
-3. 生成预览页 **若有 PDF**：`POST /api/courses/[id]/ingest` → parse → chunk → embed → `has_knowledge_base=true`。
+3. 生成预览页 **若有 PDF**：`POST /api/stages/[id]/ingest` → parse → chunk → embed → `has_knowledge_base=true`。
 4. `POST /api/generate/scene-outlines-stream`（`outlineOrchestration=false`）：
    - 仅提示词：`requirement` → LLM 大纲；
    - 仅 PDF：`pdfExcerpt` + 自动 `languageDirective` → LLM 大纲；
-   - 二者：`requirement` + RAG topK 或 pdf 摘要 → LLM 大纲。
-5. **（M2+，可选）** `POST /api/chat`：大纲编辑助手 Tool 修改 `outlines`（§3.1.2）。
-6. `PATCH /api/courses/[id]/outlines`：用户确认大纲。
+   - 二者：`requirement` + RAG topK 或 pdf 摘要 → LLM 大纲；
+   - 流式完成后写入 `stage.outlines` JSONB，`outlines_status = 'draft'`（§6.1.4；流式过程中仅 sessionStorage）。
+5. **（M2+，可选）** `POST /api/chat`：大纲编辑助手 Tool PATCH `stage.outlines`（§3.1.2、§6.3）。
+6. `POST /api/stages/[id]/outlines/confirm`：用户确认执行稿大纲，`outlines_status = 'confirmed'`。
 7. 对每个 outline（首屏先 1 个）：`scene-content` → `scene-actions` → 写 `scenes`。
-8. 首屏完成后导航 `/classroom/[id]`；课堂页轮询或 SSE 续生成剩余 scenes。
+8. 首屏完成后导航 `/classroom/[id]`；课堂页续生成剩余 scenes；全部 `ready` 后 `outlines_status = 'scenes_ready'`（默认保留 `outlines`）。
 
 **生成链路（Phase 2，`outlineOrchestration=true`）**
 
 1. 步骤 1～3 同 MVP。
-2. `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'plan' }`）` → Planner 写入 `courses.scene_outlines`，``previewPhase: 'outline-ready'``。
-3. 用户 `PATCH /api/courses/[id]` 编辑 sceneOutlines 蓝图（OutlinesEditor）。
-4. `PATCH /api/courses/[id]`（写入 `outlineConfirmedAt`）→ 蓝图冻结（此后 Agent 不可改 `sceneOutlines` 蓝图）。
+2. `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'plan' }`）` → Planner 写入 `stage.scene_outlines`，`previewPhase: 'outline-ready'`。
+3. 用户 `PATCH /api/stages/[id]` 编辑 sceneOutlines 蓝图（OutlinesEditor）。
+4. `PATCH /api/stages/[id]`（写入 `outlineConfirmedAt`）→ 蓝图冻结（此后 Agent 不可改 `scene_outlines`）。
 5. `POST /api/generate/scene-outlines-stream（body: `{ outlineOrchestration: true, phase: 'execute' }`）`（SSE）：
    - Drafter 按冻结 Plan 生成 `SceneOutline[]`
    - Critic 校验与 Plan 一致性 → Director `redraft` \| `approve`
    - `revisionCount` 达上限仍失败 → `outline_generation_failed` + SSE `error`（§3.5.5）
-6. `approve` 后写入 `outlines` 表；步骤 5～8 同 MVP（含可选大纲助手）。
+6. `approve` 后覆盖写入 `stage.outlines` JSONB；步骤 5～8 同 MVP（含可选大纲助手）。
 
 **讨论链路**（与生成域独立，**无状态**，不引入 OpenMAIC Pro Session）
 
 1. 用户消息 → `POST /api/chat`。
-2. 若 `course.has_knowledge_base`：`retrieve(courseId, query)` → topK chunks；否则 `sources=[]`。
+2. 若 `stage.has_knowledge_base`：`retrieve(stageId, query)` → topK chunks；否则 `sources=[]`。
 3. LangGraph：director → agent_generate（注入 chunks【可选】+ requirement + 当前 scene 上下文）。
 4. SSE 返回 text；有 sources 时展示引用块，无则仅展示消息。
 
@@ -849,112 +852,246 @@ flowchart TB
 
 ## 6. 数据模型
 
-### 6.1 表结构（MVP + Phase 2 / M2+ 扩展字段）
+> **定稿说明（v1.6）**：共 **6 张表**；根实体表名为 `stage`（对齐 OpenMAIC `Stage`）；消息表名为 `chat_messages`；**不建** `outlines`、`agents`、`chunk_embeddings`、`generation_jobs` 表。执行稿大纲存 `stage.outlines` JSONB，Plan 蓝图存 `stage.scene_outlines` JSONB。完整规格见 [DATA-MODEL.md](./DATA-MODEL.md)。
+
+### 6.1 表结构（M0～M4 + M2+ + Phase 2）
 
 ```sql
--- 课程
-courses (
+-- 课堂根实体（对齐 OpenMAIC Stage）
+stage (
   id uuid PK,
-  title text,                    -- 可从 requirement 摘要或 PDF 文件名生成
-  requirement text,              -- 用户提示词；仅 PDF 时可为空
+  name text NOT NULL,                    -- 课程标题（LLM 或用户）
+  description text,
+  requirement text NOT NULL DEFAULT '',  -- 用户提示词；仅 PDF 时可为空
   language_directive text,
   has_knowledge_base boolean DEFAULT false,
-  status text,                   -- draft | generating | outline_generation_failed | ready | failed
-  scene_outlines jsonb NULL,    -- Phase 2：sceneOutlines（蓝图） 全文
-  preview_phase text DEFAULT 'preparing', -- `preparing` \| `outline-ready` \| `review` \| `generating-content`（对齐 `GenerationSessionState.previewPhase`）（Phase 2）
-  generation_session_id int DEFAULT 0,    -- 每次「重新规划」递增
-  outline_confirmed_at timestamptz NULL,
-  created_at timestamptz,
-  updated_at timestamptz
+  status text NOT NULL DEFAULT 'draft',  -- 见 §6.1.1
+  preview_phase text DEFAULT 'preparing', -- preparing | outline-ready | review | generating-content
+  outlines jsonb NOT NULL DEFAULT '[]',  -- 执行稿 SceneOutline[]（M2/M2+/P2b）
+  outlines_status text DEFAULT 'draft',  -- draft | confirmed | scenes_ready | archived（见 §6.1.4）
+  scene_outlines jsonb,                  -- Phase 2 Plan 蓝图 SceneOutline[]
+  outline_confirmed_at timestamptz,      -- Plan 冻结时间（P2a）
+  generation_session_id int DEFAULT 1,   -- 每次「重新规划」递增
+  last_critic_report jsonb,              -- P2c 失败展示
+  current_scene_id uuid REFERENCES scenes(id), -- M4 播放/续生成指针
+  agent_ids jsonb,                       -- M3 讨论 Agent（默认 config/agents.json）
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
 )
 
--- 文档
+-- PDF 元数据
 documents (
   id uuid PK,
-  course_id uuid FK REFERENCES courses(id),
-  filename text,
+  stage_id uuid NOT NULL REFERENCES stage(id) ON DELETE CASCADE,
+  filename text NOT NULL,
   page_count int,
-  raw_text text,                 -- 可选，大文本可只存 chunks
-  created_at timestamptz
+  raw_text text,                         -- ingest 产物；大文本可只存 chunks
+  storage_path text,                     -- 可选对象存储路径
+  created_at timestamptz NOT NULL
 )
 
--- RAG 分块
+-- RAG 分块 + 向量（不单独建 chunk_embeddings）
 chunks (
   id uuid PK,
-  course_id uuid FK,
-  document_id uuid FK,
-  content text,
+  stage_id uuid NOT NULL REFERENCES stage(id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  content text NOT NULL,
   page int,
+  chunk_index int NOT NULL,
   metadata jsonb,
-  created_at timestamptz
+  embedding vector(1536),                -- 维度随 embedding 模型调整
+  created_at timestamptz NOT NULL
 )
 
--- 向量（pgvector）
-chunk_embeddings (
-  chunk_id uuid PK FK REFERENCES chunks(id),
-  embedding vector(1536)         -- 维度随 embedding 模型调整
-)
-
--- 大纲
-outlines (
-  id uuid PK,
-  course_id uuid FK,
-  sort_order int,
-  type text,                     -- slide | quiz
-  payload jsonb                  -- SceneOutline 全文
-)
-
--- 场景（生成结果）
+-- 已生成课堂页（对齐 OpenMAIC Scene）
 scenes (
   id uuid PK,
-  course_id uuid FK,
-  outline_id uuid FK,
-  sort_order int,
-  type text,
-  content jsonb,
-  actions jsonb,
-  status text,                   -- pending | generating | ready | failed
-  created_at timestamptz
+  stage_id uuid NOT NULL REFERENCES stage(id) ON DELETE CASCADE,
+  outline_id text NOT NULL,              -- 逻辑关联 stage.outlines[].id（非 FK）
+  sort_order int NOT NULL,
+  type text NOT NULL,                    -- slide | quiz
+  title text NOT NULL,
+  content jsonb NOT NULL,
+  actions jsonb NOT NULL DEFAULT '[]',
+  status text NOT NULL DEFAULT 'pending', -- pending | generating | ready | failed
+  error_message text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
 )
 
--- 聊天（课堂讨论 + 大纲编辑助手）
+-- 会话元数据（课堂讨论 + 大纲编辑助手）
 chat_sessions (
   id uuid PK,
-  course_id uuid FK,
-  scene_id uuid FK NULL,
-  session_type text,             -- qa | discussion | lecture | outline（M2+ 大纲助手）
-  created_at timestamptz
+  stage_id uuid NOT NULL REFERENCES stage(id) ON DELETE CASCADE,
+  scene_id uuid REFERENCES scenes(id) ON DELETE SET NULL,
+  session_type text NOT NULL,            -- qa | discussion | lecture | outline（M2+）
+  title text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'idle',   -- idle | active | completed | error
+  config jsonb NOT NULL DEFAULT '{}',    -- agentIds, triggerAgentId, defaultAgentId
+  last_action_index int,                 -- lecture 进度
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
 )
 
-messages (
+-- 消息行
+chat_messages (
   id uuid PK,
-  session_id uuid FK,
-  role text,                     -- user | assistant | system | tool
-  agent_id text NULL,
-  content text,
-  sources jsonb NULL,            -- RAG 引用 [{chunkId, page, excerpt}]
-  metadata jsonb NULL,           -- M2+：{ toolName, toolArgs, outlineId }
-  created_at timestamptz
-)
-
--- Agent 配置（MVP 种子数据）
-agents (
-  id text PK,
-  name text,
-  role text,
-  persona text,
-  avatar text,
-  color text,
-  priority int
+  session_id uuid NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  role text NOT NULL,                    -- user | assistant | system
+  content text NOT NULL,
+  agent_id text,                         -- M3 多 Agent 气泡
+  sources jsonb,                         -- RAG 引用 [{ chunkId, page, excerpt }]
+  metadata jsonb,                        -- M2+：{ toolName, toolArgs, outlineId }
+  created_at timestamptz NOT NULL
 )
 ```
 
+#### 6.1.1 `stage.status` 状态机
+
+```
+draft → ingesting → outline_generating → outline_ready
+  → [P2: plan_frozen → outline_reviewing]
+  → outline_confirmed → scene_generating → ready
+  → outline_generation_failed   -- P2c revisionCount 超限
+  → error
+```
+
+#### 6.1.2 双层大纲（不建 outlines 表）
+
+| JSONB 列 | API 字段名 | 产品含义 | 读写规则 |
+|----------|------------|----------|----------|
+| `scene_outlines` | `sceneOutlines` | Phase 2 **Plan 蓝图** | 阶段 A 可编辑；确认后只读；「重新规划」清空并回到 `outline_ready` |
+| `outlines` | `outlines` | **执行稿**（生成 scene 的工作副本） | SSE `done` 写入；M2+ Tool PATCH；P2b approve 覆盖；见 [§6.1.4](#614-大纲与-plan-生命周期) |
+
+`SceneOutline` JSON 形状见 [§13.1](#131-sceneoutline-类型mvp-子集)；与 `lib/types/generation.ts` 对齐，MindFlow 仅允许 `type: "slide" | "quiz"`。
+
+#### 6.1.3 不建表的能力归属
+
+| 能力 | 存放位置 |
+|------|----------|
+| 固定 3 Agent 人设 | `config/agents.json` |
+| API Key / 模型 / RAG 参数 | `.env` + `SettingsDialog` → `localStorage` |
+| 生成草稿 / 未确认中间态 | `sessionStorage` |
+| Quiz 作答进度 | `localStorage` |
+| Phase 2 Round 中间态 | 请求内存 + SSE；终态写 `stage` |
+| Feature 开关 | `lib/config/features.ts` |
+
+#### 6.1.4 大纲与 Plan 生命周期
+
+> **定位**：Plan 与执行稿 Outline 均为**生成域中间产物**；课堂播放只依赖 `scenes`。本节规定何时用临时存储、何时写 `stage` JSONB、何时可清理。
+
+##### 三态存储模型
+
+| 层级 | 名称 | 存放位置 | 内容 |
+|------|------|----------|------|
+| **L0** | 草稿 | `sessionStorage.generationSession` + 前端 state | SSE 流式中间结果、未确认手改 |
+| **L1** | 工作副本 | `stage.scene_outlines` / `stage.outlines` JSONB | 可恢复、可 PATCH 的 Plan / 执行稿 |
+| **L2** | 终态 | `scenes` 表 | `content` + `actions`，课堂播放依据 |
+
+```mermaid
+flowchart LR
+  subgraph L0 [L0_草稿]
+    SS[sessionStorage]
+  end
+  subgraph L1 [L1_工作副本]
+    PO[scene_outlines]
+    EO[outlines]
+  end
+  subgraph L2 [L2_终态]
+    SC[scenes]
+  end
+  SS -->|Planner_done| PO
+  SS -->|SSE_done| EO
+  EO -->|确认大纲| SC
+```
+
+##### Plan（`stage.scene_outlines`，仅 Phase 2）
+
+| 时机 | 存储 | 说明 |
+|------|------|------|
+| Planner 运行前 | **L0** `sessionStorage` | 不写 DB |
+| Planner SSE `done` | **L1** `stage.scene_outlines` | `preview_phase = 'outline-ready'` |
+| 用户编辑 Plan | **L1** PATCH `stage` / `sceneOutlines` | 仅 `outline_confirmed_at` 为空时 |
+| 确认 Plan（冻结） | **L1** 保留 + `outline_confirmed_at` | UI 只读；**长期保留**（结构合同，不随 scene 清理） |
+| 重新规划 | 清空或重置 `outlines`；`generation_session_id++`；`outline_confirmed_at = null` | 回到阶段 A |
+
+**MVP / M2**：不使用 `scene_outlines`（列保持 `NULL`）。
+
+##### 执行稿 Outline（`stage.outlines`）
+
+| 时机 | 存储 | 说明 |
+|------|------|------|
+| SSE 流式过程中 | **L0** 仅 `sessionStorage` + 内存 | **禁止**逐条写 DB |
+| SSE `done` | **L1** `stage.outlines` + `outlines_status = 'draft'` | 刷新可恢复；进入大纲编辑区 |
+| 手改 / M2+ Tool | **L1** `PATCH /api/stages/[id]/outlines` | 原子 PATCH |
+| 用户确认大纲 | **L1** `outlines_status = 'confirmed'` | 触发 scene 生成；**保留** `outlines` 供 `scenes.outline_id` 映射 |
+| 续生成 / 单页重试（M4） | **L1** 继续保留 | `scenes.outline_id` → `outlines[].id` |
+| 全部 scene `status = ready` | **L1** 默认**保留**；`outlines_status = 'scenes_ready'` | 播放不读 outlines |
+| 可选归档 | `outlines_status = 'archived'` 或清空 `outlines = []` | 仅当不再需要单页重试；`scenes` 已冗余 title/type |
+
+**`outlines_status` 状态机**：
+
+```
+draft → confirmed → scenes_ready → archived（可选）
+```
+
+##### MVP vs Phase 2 对照
+
+| | MVP / M2 | Phase 2 |
+|--|----------|---------|
+| Plan | 无 | `scene_outlines`，冻结后长期保留 |
+| 执行稿 | `outlines`，SSE `done` 落库 | 同左，须对齐冻结 Plan |
+| 课堂播放 | 仅 `scenes` | 同左 |
+
+##### 相关 API
+
+| 操作 | 路径 | 效果 |
+|------|------|------|
+| SSE 大纲完成 | 内部或 `PATCH .../outlines` `op: replace` | 写 `stage.outlines`，`outlines_status = draft` |
+| 确认大纲开生成 | `POST /api/stages/[id]/outlines/confirm` | `outlines_status = confirmed`，触发首屏 scene 生成 |
+| Planner 完成 | `PATCH /api/stages/[id]` | 写 `scene_outlines` |
+| 冻结 Plan | `PATCH /api/stages/[id]` | `outline_confirmed_at` |
+| scene 全部 ready | 内部（续生成结束时） | `outlines_status = scenes_ready`（默认不清空 `outlines`） |
+
 ### 6.2 索引
 
-- `chunks(course_id)`、`documents(course_id)`。
-- `chunk_embeddings` 上 HNSW 或 IVFFlat 索引（`embedding vector_cosine_ops`）。
-- `scenes(course_id, sort_order)`、`outlines(course_id, sort_order)`。
-- `messages(session_id, created_at)`。
+- `documents(stage_id)`、`chunks(stage_id)`、`chunks(document_id)`。
+- `chunks.embedding` 上 HNSW 或 IVFFlat（`vector_cosine_ops`）。
+- `scenes(stage_id, sort_order)`、`chat_sessions(stage_id, session_type)`。
+- `chat_messages(session_id, created_at)`。
+
+### 6.3 执行稿大纲 PATCH（`stage.outlines` JSONB）
+
+**路径**：`PATCH /api/stages/[id]/outlines`
+
+**用途**：M2 手改确认、M2+ 大纲助手 Tool 写入、Phase 2 approve 后落库。所有对执行稿大纲的写操作均经此 API（或内部复用同一 `applyOutlinePatch` 函数），避免并发覆盖 JSONB。
+
+**请求体**（`Content-Type: application/json`）：
+
+```typescript
+type OutlinePatchRequest =
+  | { op: 'replace'; outlines: SceneOutline[]; expectedRevision?: number }
+  | { op: 'revise'; id: string; patch: Partial<SceneOutline> }
+  | { op: 'insert'; afterOrder?: number; outline: SceneOutline }
+  | { op: 'delete'; id: string }
+  | { op: 'reorder'; ids: string[] }; // 按 ids 顺序重排 order
+```
+
+**并发控制**：可选 `expectedRevision` 与 `stage.updated_at` 或专用 `outline_revision` 比对；不匹配返回 `409 CONFLICT`，客户端重新 `GET` 后重试。
+
+**响应**：
+
+```json
+{ "success": true, "outlines": [ /* SceneOutline[] */ ], "updatedOutlineIds": ["scene_2"] }
+```
+
+**规则**：
+
+1. `revise` / `delete` / `reorder` 后自动重算 `order` 为 1..N 连续整数。
+2. `scenes.outline_id` 为 text 逻辑关联；`delete` 时若存在绑定 scene 返回 `400` 并列出 `orphanSceneIds`，或 body 传 `force: true` 同步标记 orphan scenes 为 `failed`。
+3. M2+ Tool `execute` 内部调用同一 patch 逻辑；成功后 SSE 发 `outlines_updated`。
+
+**GET**：`GET /api/stages/[id]` 返回 `outlines` 与 `sceneOutlines`（camelCase）及 `scenes` 摘要。
 
 ---
 
@@ -962,19 +1099,20 @@ agents (
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/courses` | 创建课程：`requirement?` 与 `pdf?`（multipart）**至少其一** |
-| GET | `/api/courses` | 课程列表 |
-| GET | `/api/courses/[id]` | 详情：`sceneOutlines`、`previewPhase`、`outlines`、`scenes` 状态 |
-| PATCH | `/api/courses/[id]` | 更新 `sceneOutlines` / `previewPhase`；冻结蓝图时写 `outlineConfirmedAt` |
-| POST | `/api/courses/[id]/replan` | Phase 2：解冻蓝图，回到阶段 A |
-| POST | `/api/courses/[id]/ingest` | 有 PDF 时解析并入库 RAG；无文档返回 400 |
+| POST | `/api/stages` | 创建课堂：`requirement?` 与 `pdf?`（multipart）**至少其一** |
+| GET | `/api/stages` | 课堂列表 |
+| GET | `/api/stages/[id]` | 详情：`sceneOutlines`、`previewPhase`、`outlines`、`scenes` 状态 |
+| PATCH | `/api/stages/[id]` | 更新 `sceneOutlines` / `previewPhase`；冻结蓝图时写 `outlineConfirmedAt` |
+| POST | `/api/stages/[id]/replan` | Phase 2：解冻蓝图，回到阶段 A |
+| POST | `/api/stages/[id]/ingest` | 有 PDF 时解析并入库 RAG；无文档返回 400 |
 | POST | `/api/parse-pdf` | 对齐 OpenMAIC PDF 解析 |
 | POST | `/api/generate/scene-outlines-stream` | SSE 流式大纲（MVP；Phase 2 通过 body `phase` 分支） |
-| PATCH | `/api/courses/[id]/outlines` | 用户确认/编辑执行稿大纲（`outlines` 表） |
+| PATCH | `/api/stages/[id]/outlines` | 原子 PATCH `stage.outlines` JSONB（手改 / Tool / approve，见 §6.3） |
+| POST | `/api/stages/[id]/outlines/confirm` | 确认执行稿大纲，`outlines_status = confirmed`，触发 scene 生成（§6.1.4） |
 | POST | `/api/generate/scene-content` | 单页内容生成 |
 | POST | `/api/generate/scene-actions` | 单页 actions + 组装 scene |
 | POST | `/api/chat` | 课堂多 Agent SSE；M2+ 大纲助手（`config.sessionType: 'outline'`） |
-| GET | `/api/courses/[id]/chat-sessions` | M2+：获取 `sessionType=outline` 的历史消息 |
+| GET | `/api/stages/[id]/chat-sessions` | M2+：获取 `sessionType=outline` 的历史消息 |
 | POST | `/api/quiz-grade` | 简答题批改 |
 | GET | `/api/health` | 健康检查 |
 
@@ -1028,12 +1166,12 @@ agents (
 | `done` | `{ directorState? }` |
 | `error` | `{ error: string }` |
 
-### 7.2 创建课程请求示例
+### 7.2 创建课堂请求示例
 
 **仅提示词**：
 
 ```json
-POST /api/courses
+POST /api/stages
 Content-Type: application/json
 
 {
@@ -1044,7 +1182,7 @@ Content-Type: application/json
 **仅 PDF**（multipart）：
 
 ```
-POST /api/courses
+POST /api/stages
 Content-Type: multipart/form-data
 
 pdf: <file>
@@ -1053,7 +1191,7 @@ pdf: <file>
 **二者都有**：
 
 ```
-POST /api/courses
+POST /api/stages
 Content-Type: multipart/form-data
 
 requirement: "重点讲第三章的算法复杂度"
@@ -1066,11 +1204,11 @@ pdf: <file>
 
 ### 8.1 Ingest
 
-- 触发：课程创建后，若存在 PDF 则自动或手动调用 ingest。
+- 触发：课堂创建后，若存在 PDF 则自动或手动调用 ingest。
 - Chunk size：500～800 tokens，overlap 80 tokens。
-- 元数据：`page`、`document_id`、`course_id`。
-- Embedding 默认：`text-embedding-3-small`（1536 维，可配置）。
-- 完成后：`courses.has_knowledge_base = true`。
+- 元数据：`page`、`document_id`、`stage_id`。
+- Embedding 默认：`text-embedding-3-small`（1536 维，可配置）；向量存 `chunks.embedding` 列。
+- 完成后：`stage.has_knowledge_base = true`。
 
 ### 8.2 Retrieve
 
@@ -1081,7 +1219,7 @@ pdf: <file>
   - Phase 2 Planner 阶段（可选）：为 `sceneOutlines（蓝图）.sourceHints` 提供素材引用。
 - 无知识库：`retrieve` 返回 `[]`，不报错。
 - topK：5～8；可选相似度阈值（如 cosine > 0.7）。
-- 过滤：**必须**带 `course_id`，防止跨课程泄漏。
+- 过滤：**必须**带 `stage_id`，防止跨课堂泄漏。
 
 **Prompt 注入模板**（有知识库时）：
 
@@ -1457,11 +1595,14 @@ MindFlow 在 Postgres 持久化层扩展 OpenMAIC 客户端类型，**不另起�
 
 | OpenMAIC（原项目） | MindFlow 持久化 / 用法 |
 |--------------------|------------------------|
-| `UserRequirements`（`lib/types/generation.ts`） | `courses.requirement` + 可选 `userNickname` 等字段 |
-| `SceneOutline` | `outlines.payload`；Phase 2 蓝图存 `courses.scene_outlines` |
-| `SceneOutline[]` / `sceneOutlines` | `GenerationSessionState.sceneOutlines`；API 字段名 `sceneOutlines` |
-| `GenerationSessionState.previewPhase` | `courses.preview_phase`（枚举值完全一致） |
-| `languageDirective` | `courses.language_directive` |
+| `Stage`（`lib/types/stage.ts`） | `stage` 表一行 |
+| `UserRequirements`（`lib/types/generation.ts`） | `stage.requirement` + 可选 nickname 等（sessionStorage） |
+| `SceneOutline` | `stage.outlines` JSONB 数组元素；Plan 蓝图存 `stage.scene_outlines` |
+| `SceneOutline[]` / `sceneOutlines` | API 字段名 `sceneOutlines` ↔ DB `scene_outlines` |
+| `GenerationSessionState.previewPhase` | `stage.preview_phase`（枚举值完全一致） |
+| `languageDirective` | `stage.language_directive` |
+| IndexedDB `stageOutlines` + `scenes` | `stage.scene_outlines` + `stage.outlines` + `scenes` 表 |
+| `ChatSession` + 内嵌 messages | `chat_sessions` + `chat_messages` |
 | `generateSceneOutlinesFromRequirements` | `lib/generation/outline-generator.ts` |
 | `POST /api/generate/scene-outlines-stream` | 同路径；`outlineOrchestration` / `phase` 为 MindFlow body 扩展 |
 | `POST /api/generate/scene-content` | 同路径 |
@@ -1472,6 +1613,7 @@ MindFlow 在 Postgres 持久化层扩展 OpenMAIC 客户端类型，**不另起�
 | `OutlinesEditor` | `components/generation/outlines-editor.tsx` |
 | `lib/orchestration/director-graph.ts` | **仅**课堂讨论 LangGraph |
 | Phase 2 大纲评审 | `outline-generator.ts` + `scene-outlines-stream/route.ts`（**不**新建 `outline-graph.ts`） |
+| Agent 人设 | `config/agents.json`（**不**建 `agents` 表） |
 
 
 ---
