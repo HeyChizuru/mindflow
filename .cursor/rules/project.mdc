@@ -1,0 +1,51 @@
+---
+description: MindFlow 项目规范（改代码边界、Types-first 分层、API 约定）
+alwaysApply: true
+---
+
+# MindFlow 项目规范
+
+## 1. 改代码边界
+
+用户未明确要求**修改/实现/创建/删除**时，默认**只读**：可读文件、解释、给方案、跑只读命令。
+
+**禁止**（除非明确要求）：改代码/配置、装依赖、迁移、改 `.env`、提交 git/PR。
+
+**算明确要求**：实现、修复、添加、删除、重构、直接改、开始 M0、指定文件要求动手。
+
+**不算**：下一步是什么、怎么理解、熟悉项目、纯问答。不确定时先问：「需要我直接动手改代码吗？」
+
+## 2. Types-first 分层
+
+```
+lib/types → lib/validators → lib/services → lib/db/queries → app/api
+```
+
+**禁止** `lib/types` import validators、db、services。
+
+| 层 | 做 | 不做 |
+|----|-----|------|
+| `lib/types/` | interface、API 契约 | Zod、DB |
+| `lib/validators/` | Zod + `satisfies z.ZodType<T>` | 业务逻辑 |
+| `lib/services/` | parse → query → 返回 DTO | HTTP status |
+| `lib/db/queries/` | Prisma CRUD | HTTP 校验 |
+| `app/api/` | HTTP 适配 | 业务编排 |
+
+Prisma 模型不直接暴露给前端；DTO 中 `Date` → ISO `string`。
+
+**新增 API**：types → validators → services → route。
+
+**前端**：`import type` 从 `@/lib/types/*`；可 import validators 校验响应；不 import services、db。
+
+```typescript
+// lib/types/stage.ts
+export type CreateStageBody = { requirement: string };
+
+// lib/validators/stages.ts
+export const createStageBodySchema = z.object({ ... }) satisfies z.ZodType<CreateStageBody>;
+
+// lib/services/stages.ts — parse + query，返回 CreateStageResponse
+// app/api/**/route.ts — 只处理 Request/Response/status
+```
+
+新域（大纲、Scene）在 `lib/types/<domain>.ts` 同样 types-first。
