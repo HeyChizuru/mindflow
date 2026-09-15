@@ -35,9 +35,16 @@ export const OUTLINES_STATUSES = [
 
 export type OutlinesStatus = (typeof OUTLINES_STATUSES)[number];
 
-/** POST /api/stages 请求体 */
+/** POST /api/stages 请求体（JSON 或 multipart 的文本字段） */
 export type CreateStageBody = {
-  requirement: string;
+  requirement?: string;
+};
+
+/** 上传 PDF 后返回的文档摘要（尚未 ingest） */
+export type CreateStageDocument = {
+  id: string;
+  filename: string;
+  storagePath: string;
 };
 
 /** POST /api/stages 成功响应（201） */
@@ -48,6 +55,8 @@ export type CreateStageResponse = {
   status: "draft";
   previewPhase: "preparing";
   createdAt: string;
+  hasKnowledgeBase: false;
+  document?: CreateStageDocument;
 };
 
 /** API 错误响应体 */

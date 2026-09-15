@@ -78,5 +78,84 @@ model Stage {
   /// 更新时间
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// 课堂下的 PDF 文档（上传即插入，ingest 前无全文）
+  documents Document[]
+
+  /// 课堂下的 RAG 分块（仅 ingest 后写入，按 stage_id 隔离检索）
+  chunks Chunk[]
+
   @@map("stage")
+}
+
+/// PDF 元数据（先存后解析：上传写 filename/storage_path，ingest 后补页数与全文）
+model Document {
+  /// 主键 UUID
+  id String @id @default(uuid()) @db.Uuid
+
+  /// 所属课堂
+  stageId String @map("stage_id") @db.Uuid
+
+  /// 原始文件名
+  filename String
+
+  /// PDF 页数（ingest 完成后写入；上传时为空）
+  pageCount Int? @map("page_count")
+
+  /// ingest 解析出的全文；上传时为空，大文本可只存 chunks
+  rawText String? @map("raw_text")
+
+  /// 本地 uploads/ 相对路径
+  storagePath String @map("storage_path")
+
+  /// 创建时间
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// 所属课堂
+  stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  /// 该文档切出的 RAG 分块
+  chunks Chunk[]
+
+  @@index([stageId])
+  @@map("documents")
+}
+
+/// RAG 分块 + pgvector 向量（不单独建 chunk_embeddings 表）
+model Chunk {
+  /// 主键 UUID
+  id String @id @default(uuid()) @db.Uuid
+
+  /// 所属课堂（retrieve 必须按此过滤，防止跨课堂泄漏）
+  stageId String @map("stage_id") @db.Uuid
+
+  /// 来源文档
+  documentId String @map("document_id") @db.Uuid
+
+  /// 切块正文
+  content String
+
+  /// 对应 PDF 页码
+  page Int?
+
+  /// 全局切块序号（0..N）
+  chunkIndex Int @map("chunk_index")
+
+  /// 可选元数据，如 { filename }
+  metadata Json?
+
+  /// embedding 向量（ingest 后写入；维数 1024，对应 Qwen3-Embedding-0.6B）
+  embedding Unsupported("vector")?
+
+  /// 创建时间
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// 所属课堂
+  stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  /// 来源文档
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([stageId])
+  @@index([documentId])
+  @@map("chunks")
 }
