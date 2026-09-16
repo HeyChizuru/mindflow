@@ -1,8 +1,7 @@
 ---
 description: MindFlow 项目规范（改代码边界、Types-first 分层、API 约定）
-alwaysApply: true
+alwaysApply: false
 ---
-
 # MindFlow 项目规范
 
 ## 1. 改代码边界

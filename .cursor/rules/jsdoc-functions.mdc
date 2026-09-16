@@ -1,0 +1,39 @@
+---
+description: 必要函数必须写 JSDoc，说明做什么、约束与副作用
+alwaysApply: false
+---
+# 必要函数加注释
+
+新增或改动**必要函数**时，必须在定义上方写简短 JSDoc（中文）。不要写复述代码的废话。
+
+## 必须注释
+
+- `export` 的函数、class、常量（含 API 入口、service、query）
+- route handler（`GET` / `POST` 等）
+- 非显而易见的内部辅助：校验、路径/文件名处理、错误类型、业务上限常量
+
+## 不必注释
+
+- 一眼能看懂的纯转发、单行 getter、类型别名
+- 函数体内逐步解释（用好命名，不要行内废话）
+
+## 注释写什么
+
+一两句即可，覆盖：**做什么**、**关键约束**（缺参、上限、只存不解析等）、**副作用**（写盘、写库）。参数/返回值类型已在签名里的不必再抄一遍。
+
+```typescript
+// ❌ BAD：无注释，或复述代码
+export async function createStage(input: unknown, pdf?: File) { ... }
+/** 创建 stage */
+function sanitizeFilename(name: string) { ... }
+
+// ✅ GOOD：说明职责与约束
+/**
+ * 创建课堂：提示词与 PDF 至少其一。
+ * 有 PDF 时只写入 uploads/ 和 documents 元数据，不解析、不写 chunks。
+ */
+export async function createStage(input: unknown, pdf?: File): Promise<CreateStageResponse> { ... }
+
+/** 去掉路径分隔符，避免写入 uploads/ 时逃逸目录 */
+function sanitizeFilename(name: string): string { ... }
+```
