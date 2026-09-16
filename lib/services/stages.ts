@@ -10,8 +10,10 @@ import {
   createStageResponseSchema,
 } from "@/lib/validators/stages";
 
+/** PDF 体积上限（50MB），对齐 PRD */
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 
+/** 创建课堂参数不合法（缺 requirement/pdf、非 PDF、超 50MB 等） */
 export class StageValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -19,6 +21,10 @@ export class StageValidationError extends Error {
   }
 }
 
+/**
+ * 创建课堂：提示词与 PDF 至少其一。
+ * 有 PDF 时只写入 uploads/ 和 documents 元数据，不解析、不写 chunks。
+ */
 export async function createStage(
   input: unknown,
   pdf?: File,
@@ -80,6 +86,7 @@ export async function createStage(
   }
 }
 
+/** 把 Prisma Stage 行映射为 API DTO（hasKnowledgeBase 固定为 false） */
 function toResponse(
   stage: {
     id: string;
@@ -103,6 +110,7 @@ function toResponse(
   });
 }
 
+/** 校验为 PDF 且不超过 50MB */
 function assertPdf(file: File) {
   const isPdf =
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -120,12 +128,14 @@ function assertPdf(file: File) {
   }
 }
 
+/** 去掉路径分隔符，只保留安全文件名 */
 function sanitizeFilename(name: string): string {
   const base = path.basename(name).replace(/[/\\]/g, "");
   const safe = base.replace(/[^\w.\u4e00-\u9fff-]+/g, "_") || "upload.pdf";
   return safe.toLowerCase().endsWith(".pdf") ? safe : `${safe}.pdf`;
 }
 
+/** 去掉 .pdf 后缀，用作仅 PDF 时的课堂标题 */
 function filenameStem(name: string): string {
   const base = path.basename(name);
   return base.replace(/\.pdf$/i, "") || "untitled";
