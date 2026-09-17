@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/client";
-import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/lib/generated/prisma/client";
 
 /** 删除某课堂下全部 chunks，供 ingest 重跑覆盖 */
 export async function deleteChunksByStageId(
@@ -9,19 +9,49 @@ export async function deleteChunksByStageId(
   return db.chunk.deleteMany({ where: { stageId } });
 }
 
-/** 批量插入切块正文；不写 embedding */
-export async function insertChunks(
-  rows: {
-    stageId: string;
-    documentId: string;
-    content: string;
-    page: number;
-    chunkIndex: number;
-  }[],
-) {
+type ChunkInsert = {
+  stageId: string;
+  documentId: string;
+  content: string;
+  page: number;
+  chunkIndex: number;
+  embedding: number[];
+};
+
+/** 批量插入切块；必须带 1024 维 embedding，禁止无向量入库 */
+export async function insertChunks(rows: ChunkInsert[]) {
   if (rows.length === 0) {
     return { count: 0 };
   }
 
-  return prisma.chunk.createMany({ data: rows });
+  for (const row of rows) {
+    const vector = Prisma.raw(`'${toVectorLiteral(row.embedding)}'::vector`);
+    await prisma.$executeRaw`
+      INSERT INTO chunks (id, stage_id, document_id, content, page, chunk_index, embedding)
+      VALUES (
+        gen_random_uuid(),
+        ${row.stageId}::uuid,
+        ${row.documentId}::uuid,
+        ${row.content},
+        ${row.page},
+        ${row.chunkIndex},
+        ${vector}
+      )
+    `;
+  }
+
+  return { count: rows.length };
+}
+
+/** 把 number[] 转成 pgvector 字面量；必须是 1024 个有限数字 */
+function toVectorLiteral(values: number[]): string {
+  if (values.length !== 1024) {
+    throw new Error(`embedding must have 1024 dimensions, got ${values.length}`);
+  }
+
+  if (values.some((value) => !Number.isFinite(value))) {
+    throw new Error("embedding contains non-finite numbers");
+  }
+
+  return `[${values.join(",")}]`;
 }

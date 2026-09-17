@@ -7,8 +7,8 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 /**
- * 解析已上传 PDF：读 uploads/ → unpdf → 切分 → 写 raw_text 与 chunks。
- * 不接收文件，不写 embedding。
+ * 解析已上传 PDF：读盘 → unpdf → 切分 → 向量化写入 chunks。
+ * 不接收文件。
  */
 export async function POST(
   _request: Request,

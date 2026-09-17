@@ -3,8 +3,9 @@ import path from "node:path";
 
 import { deleteChunksByStageId, insertChunks } from "@/lib/db/queries/chunks";
 import { getDocumentByStageId, updateDocumentParse } from "@/lib/db/queries/documents";
-import { getStageById } from "@/lib/db/queries/stages";
+import { getStageById, setStageHasKnowledgeBase } from "@/lib/db/queries/stages";
 import { splitPagesToChunks } from "@/lib/knowledge/chunk";
+import { embedTexts } from "@/lib/knowledge/embed";
 import { parsePdf } from "@/lib/knowledge/parse";
 import type { IngestResponse } from "@/lib/types/knowledge";
 import {
@@ -32,8 +33,8 @@ export class KnowledgeNotFoundError extends Error {
 }
 
 /**
- * 确认生成：读取已上传 PDF，unpdf 抽文本、按页切分后写入 raw_text 与 chunks。
- * 不写 embedding、不改 hasKnowledgeBase；已解析过则覆盖切块。
+ * 确认生成：读 PDF → 抽文本 → 切分 → 向量化写入 chunks，并打开 hasKnowledgeBase。
+ * 已 ingest 过则覆盖切块与向量。
  */
 export async function ingestStage(stageId: string): Promise<IngestResponse> {
   const parsedId = stageIdSchema.safeParse(stageId);
@@ -64,7 +65,6 @@ export async function ingestStage(stageId: string): Promise<IngestResponse> {
   }
 
   const pages = await parsePdf(new Uint8Array(buffer));
-  console.log("pages", pages);
   const rawText = pages.map((page) => page.text).join("\n\n");
   const charCount = rawText.replace(/\s/g, "").length;
 
@@ -78,7 +78,12 @@ export async function ingestStage(stageId: string): Promise<IngestResponse> {
   if (chunks.length === 0) {
     throw new KnowledgeValidationError("no chunks produced from parsed text");
   }
-  console.log("chunks", chunks);
+
+  const embeddings = await embedTexts(chunks.map((chunk) => chunk.content));
+  if (embeddings.length !== chunks.length) {
+    throw new Error("embedding count does not match chunk count");
+  }
+
   await updateDocumentParse({
     id: document.id,
     pageCount: pages.length,
@@ -87,14 +92,16 @@ export async function ingestStage(stageId: string): Promise<IngestResponse> {
 
   await deleteChunksByStageId(id);
   await insertChunks(
-    chunks.map((chunk) => ({
+    chunks.map((chunk, index) => ({
       stageId: id,
       documentId: document.id,
       content: chunk.content,
       page: chunk.page,
       chunkIndex: chunk.chunkIndex,
+      embedding: embeddings[index],
     })),
   );
+  await setStageHasKnowledgeBase(id, true);
 
   return ingestResponseSchema.parse({
     stageId: id,
@@ -102,7 +109,7 @@ export async function ingestStage(stageId: string): Promise<IngestResponse> {
     pageCount: pages.length,
     charCount,
     chunkCount: chunks.length,
-    hasKnowledgeBase: false,
+    hasKnowledgeBase: true,
   });
 }
 

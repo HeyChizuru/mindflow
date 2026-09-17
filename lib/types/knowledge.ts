@@ -11,12 +11,12 @@ export type TextChunk = {
   chunkIndex: number;
 };
 
-/** POST /api/stages/[id]/ingest 成功响应（本轮切分落库，不建知识库） */
+/** POST /api/stages/[id]/ingest 成功响应（切分 + 向量化后知识库就绪） */
 export type IngestResponse = {
   stageId: string;
   documentId: string;
   pageCount: number;
   charCount: number;
   chunkCount: number;
-  hasKnowledgeBase: false;
+  hasKnowledgeBase: true;
 };

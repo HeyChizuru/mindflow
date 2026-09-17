@@ -16,3 +16,11 @@ export async function deleteStage(
 ) {
   return db.stage.delete({ where: { id } });
 }
+
+/** ingest 完成后打开 RAG 开关 */
+export async function setStageHasKnowledgeBase(id: string, value: boolean) {
+  return prisma.stage.update({
+    where: { id },
+    data: { hasKnowledgeBase: value },
+  });
+}
