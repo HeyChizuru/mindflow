@@ -4,11 +4,19 @@ export type ParsedPdfPage = {
   text: string;
 };
 
-/** POST /api/stages/[id]/ingest 成功响应（本轮仅解析，不建知识库） */
+/** 按页切分后的一块（无向量） */
+export type TextChunk = {
+  content: string;
+  page: number;
+  chunkIndex: number;
+};
+
+/** POST /api/stages/[id]/ingest 成功响应（本轮切分落库，不建知识库） */
 export type IngestResponse = {
   stageId: string;
   documentId: string;
   pageCount: number;
   charCount: number;
+  chunkCount: number;
   hasKnowledgeBase: false;
 };

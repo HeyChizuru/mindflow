@@ -8,5 +8,6 @@ export const ingestResponseSchema = z.object({
   documentId: z.uuid(),
   pageCount: z.number().int().positive(),
   charCount: z.number().int().nonnegative(),
+  chunkCount: z.number().int().nonnegative(),
   hasKnowledgeBase: z.literal(false),
 }) satisfies z.ZodType<IngestResponse>;

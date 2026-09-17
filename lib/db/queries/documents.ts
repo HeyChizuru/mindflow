@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import type { PrismaClient } from "@/lib/generated/prisma/client";
 
 export async function insertDocument(data: {
   stageId: string;
@@ -26,4 +27,12 @@ export async function updateDocumentParse(data: {
       rawText: data.rawText,
     },
   });
+}
+
+/** 删除某课堂下全部 documents */
+export async function deleteDocumentsByStageId(
+  stageId: string,
+  db: Pick<PrismaClient, "document"> = prisma,
+) {
+  return db.document.deleteMany({ where: { stageId } });
 }

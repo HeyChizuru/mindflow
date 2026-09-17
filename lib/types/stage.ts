@@ -63,3 +63,8 @@ export type CreateStageResponse = {
 export type ApiErrorResponse = {
   error: string;
 };
+
+/** DELETE /api/stages/[id] 成功响应（200） */
+export type DeleteStageResponse = {
+  id: string;
+};

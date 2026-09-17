@@ -2,6 +2,7 @@ import type {
   ApiErrorResponse,
   CreateStageBody,
   CreateStageResponse,
+  DeleteStageResponse,
 } from "@/lib/types/stage";
 import { z } from "zod";
 
@@ -33,3 +34,9 @@ export const createStageResponseSchema = z.object({
 export const apiErrorSchema = z.object({
   error: z.string(),
 }) satisfies z.ZodType<ApiErrorResponse>;
+
+export const stageIdSchema = z.uuid("stageId must be a uuid");
+
+export const deleteStageResponseSchema = z.object({
+  id: z.uuid(),
+}) satisfies z.ZodType<DeleteStageResponse>;
