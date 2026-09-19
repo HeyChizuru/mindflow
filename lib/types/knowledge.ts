@@ -20,3 +20,11 @@ export type IngestResponse = {
   chunkCount: number;
   hasKnowledgeBase: true;
 };
+
+/** RAG 检索引用（Chat 的 sources） */
+export type SourceRef = {
+  chunkId: string;
+  page?: number;
+  excerpt: string;
+  score?: number;
+};

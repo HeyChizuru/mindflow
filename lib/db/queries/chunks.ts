@@ -43,6 +43,35 @@ export async function insertChunks(rows: ChunkInsert[]) {
   return { count: rows.length };
 }
 
+type SimilarChunkRow = {
+  id: string;
+  content: string;
+  page: number | null;
+  score: number;
+};
+
+/** 按课堂隔离做 cosine 近邻检索；必须带 stage_id */
+export async function searchSimilarChunks(
+  stageId: string,
+  embedding: number[],
+  limit = 8,
+): Promise<SimilarChunkRow[]> {
+  const vector = Prisma.raw(`'${toVectorLiteral(embedding)}'::vector`);
+
+  return prisma.$queryRaw<SimilarChunkRow[]>`
+    SELECT
+      id::text AS id,
+      content,
+      page,
+      (1 - (embedding <=> ${vector}))::float AS score
+    FROM chunks
+    WHERE stage_id = ${stageId}::uuid
+      AND embedding IS NOT NULL
+    ORDER BY embedding <=> ${vector}
+    LIMIT ${limit}
+  `;
+}
+
 /** 把 number[] 转成 pgvector 字面量；必须是 1024 个有限数字 */
 function toVectorLiteral(values: number[]): string {
   if (values.length !== 1024) {

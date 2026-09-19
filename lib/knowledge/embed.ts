@@ -40,3 +40,15 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 
   return embeddings;
 }
+
+/**
+ * 把单条查询转成 1024 维向量，供 retrieve 使用。
+ */
+export async function embedQuery(text: string): Promise<number[]> {
+  const [embedding] = await embedTexts([text]);
+  if (!embedding) {
+    throw new Error("failed to embed query");
+  }
+
+  return embedding;
+}
