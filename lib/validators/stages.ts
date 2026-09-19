@@ -10,8 +10,8 @@ export const createStageBodySchema = z.object({
   requirement: z
     .string()
     .trim()
-    .max(10000, "requirement must not exceed 10000 characters")
-    .optional(),
+    .min(10, "requirement must be at least 10 characters")
+    .max(10000, "requirement must not exceed 10000 characters"),
 }) satisfies z.ZodType<CreateStageBody>;
 
 export const createStageDocumentSchema = z.object({

@@ -17,7 +17,7 @@ import {
 /** PDF 体积上限（50MB），对齐 PRD */
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 
-/** 创建课堂参数不合法（缺 requirement/pdf、非 PDF、超 50MB 等） */
+/** 创建课堂参数不合法（缺 requirement、非 PDF、超 50MB 等） */
 export class StageValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -34,35 +34,21 @@ export class StageNotFoundError extends Error {
 }
 
 /**
- * 创建课堂：提示词与 PDF 至少其一。
+ * 创建课堂：提示词必填（至少 10 字），PDF 可选。
  * 有 PDF 时只写入 uploads/ 和 documents 元数据，不解析、不写 chunks。
  */
 export async function createStage(
   input: unknown,
   pdf?: File,
 ): Promise<CreateStageResponse> {
-  const { requirement = "" } = createStageBodySchema.parse(input);
+  const { requirement } = createStageBodySchema.parse(input);
   const hasPdf = pdf !== undefined;
-
-  if (!hasPdf) {
-    if (requirement.length === 0) {
-      throw new StageValidationError("requirement or pdf is required");
-    }
-
-    if (requirement.length < 10) {
-      throw new StageValidationError(
-        "requirement must be at least 10 characters when no pdf is provided",
-      );
-    }
-  }
 
   if (hasPdf) {
     assertPdf(pdf);
   }
 
-  const name = hasPdf && requirement.length === 0
-    ? deriveStageName(filenameStem(pdf.name))
-    : deriveStageName(requirement);
+  const name = deriveStageName(requirement);
 
   const stage = await insertStage({
     name,
@@ -172,12 +158,6 @@ function sanitizeFilename(name: string): string {
   const base = path.basename(name).replace(/[/\\]/g, "");
   const safe = base.replace(/[^\w.\u4e00-\u9fff-]+/g, "_") || "upload.pdf";
   return safe.toLowerCase().endsWith(".pdf") ? safe : `${safe}.pdf`;
-}
-
-/** 去掉 .pdf 后缀，用作仅 PDF 时的课堂标题 */
-function filenameStem(name: string): string {
-  const base = path.basename(name);
-  return base.replace(/\.pdf$/i, "") || "untitled";
 }
 
 /** 解析课堂上传目录；拒绝逃出 UPLOAD_DIR */

@@ -50,8 +50,8 @@ Remove-Item -Recurse -Force "$env:TEMP\mindflow-api-test" -ErrorAction SilentlyC
 
 ### POST /api/stages（JSON）
 
-- 字段：`requirement`（可选字符串，无 PDF 时至少 10 字符）。
-- 无 PDF 时：`requirement` 与 `pdf` 至少其一（见 `lib/services/stages.ts`）。
+- 字段：`requirement`（**必填**，trim 后 ≥10 字符）。
+- 产品规格（PRD §1.6）：无 `requirement` 应 400。当前 `lib/services/stages.ts` 仍可能仅校验「无 PDF 时必填」，实现未完全对齐前以 PRD 为准。
 
 ```powershell
 $path = Write-JsonBodyFile "create.json" '{"requirement":"设计一节关于光合作用的高中生物课，包含实验演示和小组讨论"}'
@@ -60,13 +60,14 @@ curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
   --data-binary "@$path"
 ```
 
-### POST /api/stages（PDF）
+### POST /api/stages（提示词 + PDF，multipart）
 
-- 字段：`pdf`（文件）；可选 `requirement`（文本）。
+- 字段：`requirement`（**必填**文本）+ `pdf`（文件）。
 - 仅上传，不 ingest；响应可含 `document`。
 
 ```powershell
 curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
+  -F "requirement=设计一节关于光合作用的高中生物课，结合上传讲义中的实验部分" `
   -F "pdf=@<绝对路径>\file.pdf;type=application/pdf"
 ```
 

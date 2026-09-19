@@ -37,7 +37,7 @@ export type OutlinesStatus = (typeof OUTLINES_STATUSES)[number];
 
 /** POST /api/stages 请求体（JSON 或 multipart 的文本字段） */
 export type CreateStageBody = {
-  requirement?: string;
+  requirement: string;
 };
 
 /** 上传 PDF 后返回的文档摘要（尚未 ingest） */

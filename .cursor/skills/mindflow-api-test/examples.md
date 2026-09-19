@@ -13,6 +13,13 @@ curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
   --data-binary "@$path"
 ```
 
+**multipart 仅 pdf、无 requirement（产品规格期望 400；当前实现可能仍 201）**
+
+```powershell
+curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
+  -F "pdf=@<绝对路径>\file.pdf;type=application/pdf"
+```
+
 **非法 JSON 文件（期望 400 Invalid JSON body）**
 
 ```powershell
