@@ -4,6 +4,8 @@ import path from "node:path";
 import { deleteChunksByStageId, insertChunks } from "@/lib/db/queries/chunks";
 import { getDocumentByStageId, updateDocumentParse } from "@/lib/db/queries/documents";
 import { getStageById, setStageHasKnowledgeBase } from "@/lib/db/queries/stages";
+import type { EmbeddingModel } from "ai";
+
 import { splitPagesToChunks } from "@/lib/knowledge/chunk";
 import { embedTexts } from "@/lib/knowledge/embed";
 import { parsePdf } from "@/lib/knowledge/parse";
@@ -34,9 +36,12 @@ export class KnowledgeNotFoundError extends Error {
 
 /**
  * 确认生成：读 PDF → 抽文本 → 切分 → 向量化写入 chunks，并打开 hasKnowledgeBase。
- * 已 ingest 过则覆盖切块与向量。
+ * 已 ingest 过则覆盖切块与向量。embeddingModel 由 Route 注入，本函数不读请求头。
  */
-export async function ingestStage(stageId: string): Promise<IngestResponse> {
+export async function ingestStage(
+  stageId: string,
+  options: { embeddingModel: EmbeddingModel },
+): Promise<IngestResponse> {
   const parsedId = stageIdSchema.safeParse(stageId);
   if (!parsedId.success) {
     throw new KnowledgeValidationError("stageId must be a uuid");
@@ -79,7 +84,10 @@ export async function ingestStage(stageId: string): Promise<IngestResponse> {
     throw new KnowledgeValidationError("no chunks produced from parsed text");
   }
 
-  const embeddings = await embedTexts(chunks.map((chunk) => chunk.content));
+  const embeddings = await embedTexts(
+    chunks.map((chunk) => chunk.content),
+    options.embeddingModel,
+  );
   if (embeddings.length !== chunks.length) {
     throw new Error("embedding count does not match chunk count");
   }

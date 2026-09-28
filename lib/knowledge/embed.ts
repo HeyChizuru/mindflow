@@ -1,32 +1,23 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { embedMany } from "ai";
+import type { EmbeddingModel } from "ai";
 
 /** BGE-M3 / 当前 pgvector 列维度 */
 const EMBEDDING_DIMS = 1024;
 
 /**
- * 用 SiliconFlow OpenAI 兼容接口把文本批量转成 1024 维向量。
- * 不传 dimensions（BGE-M3 不支持该参数）。不写库。
+ * 用已解析的 embedding 模型把文本批量转成 1024 维向量。
+ * 不传 dimensions（BGE-M3 不支持该参数）。不写库、不读 env。
  */
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(
+  texts: string[],
+  model: EmbeddingModel,
+): Promise<number[][]> {
   if (texts.length === 0) {
     return [];
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
-  const siliconflow = createOpenAI({
-    apiKey,
-    baseURL: process.env.OPENAI_BASE_URL,
-  });
-
   const { embeddings } = await embedMany({
-    model: siliconflow.embeddingModel(
-      process.env.EMBEDDING_MODEL ?? "BAAI/bge-m3",
-    ),
+    model,
     values: texts,
   });
 
@@ -44,8 +35,11 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 /**
  * 把单条查询转成 1024 维向量，供 retrieve 使用。
  */
-export async function embedQuery(text: string): Promise<number[]> {
-  const [embedding] = await embedTexts([text]);
+export async function embedQuery(
+  text: string,
+  model: EmbeddingModel,
+): Promise<number[]> {
+  const [embedding] = await embedTexts([text], model);
   if (!embedding) {
     throw new Error("failed to embed query");
   }

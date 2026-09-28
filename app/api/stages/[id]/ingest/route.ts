@@ -1,3 +1,5 @@
+import { LlmSettingsError } from "@/lib/ai/llm-connection";
+import { requireEmbeddingModel } from "@/lib/knowledge/embedding-config";
 import {
   ingestStage,
   KnowledgeNotFoundError,
@@ -8,18 +10,23 @@ import { ZodError } from "zod";
 
 /**
  * 解析已上传 PDF：读盘 → unpdf → 切分 → 向量化写入 chunks。
- * 不接收文件。
+ * 不接收文件。向量模型从头解析，不要求 Chat-Model。
  */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
   try {
-    const result = await ingestStage(id);
+    const { model: embedding } = await requireEmbeddingModel(request);
+    const result = await ingestStage(id, { embeddingModel: embedding });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    if (error instanceof LlmSettingsError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
+
     if (error instanceof KnowledgeNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }

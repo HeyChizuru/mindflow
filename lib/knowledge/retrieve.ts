@@ -1,3 +1,5 @@
+import type { EmbeddingModel } from "ai";
+
 import { searchSimilarChunks } from "@/lib/db/queries/chunks";
 import { getStageById } from "@/lib/db/queries/stages";
 import { embedQuery } from "@/lib/knowledge/embed";
@@ -8,11 +10,12 @@ const RETRIEVE_LIMIT = 8;
 
 /**
  * 按课堂检索相关切块。无知识库、课堂不存在或问题为空时返回 []，不抛错。
- * 必须按 stage_id 过滤，防止跨课堂泄漏。
+ * 必须按 stage_id 过滤，防止跨课堂泄漏。embeddingModel 须与 ingest 同源。
  */
 export async function retrieve(
   stageId: string,
   query: string,
+  options: { embeddingModel: EmbeddingModel },
 ): Promise<SourceRef[]> {
   const trimmed = query.trim();
   if (!trimmed) {
@@ -24,7 +27,7 @@ export async function retrieve(
     return [];
   }
 
-  const embedding = await embedQuery(trimmed);
+  const embedding = await embedQuery(trimmed, options.embeddingModel);
   const rows = await searchSimilarChunks(stageId, embedding, RETRIEVE_LIMIT);
 
   return rows.map((row) => ({

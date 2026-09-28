@@ -1,91 +1,78 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-import { normalizeBaseUrl } from "@/lib/ai/openai-compat";
-import type { LlmSettings, ResolvedLlmSettings } from "@/lib/ai/types";
+/** 两条链路共用：OpenAI 兼容 API Key */
+export const HEADER_API_KEY = "x-mindflow-llm-api-key";
+/** 两条链路共用：OpenAI 兼容根 URL */
+export const HEADER_BASE_URL = "x-mindflow-llm-base-url";
 
-/** LLM 配置不完整或 baseUrl 不允许（缺 key、生产 SSRF 等） */
+/** LLM 配置不完整或 baseUrl 不允许（缺头 401，非法 Url / SSRF 400） */
 export class LlmSettingsError extends Error {
-  constructor(message: string) {
+  readonly statusCode: 401 | 400;
+
+  constructor(message: string, statusCode: 401 | 400) {
     super(message);
     this.name = "LlmSettingsError";
+    this.statusCode = statusCode;
   }
 }
 
+/** 读取请求头并 trim；空串视为未提供 */
+export function headerValue(request: Request, name: string): string | undefined {
+  const value = request.headers.get(name)?.trim();
+  return value ? value : undefined;
+}
+
 /**
- * 合并请求体 llm 与服务端 env，得到调用模型前的完整配置。
- * 优先级：partial → LLM_* → DEEPSEEK_* / OPENAI_*；缺 apiKey 或 baseUrl 抛错。
- * 生产环境拒绝内网 / localhost / 元数据地址。不打印完整 key。
+ * 读 Key + Base-Url，规范化后做生产 SSRF。
+ * 不读模型名、不创建 client；缺头 401，非法 Url / SSRF 400。
  */
-export async function resolveLlmSettings(
-  partial?: LlmSettings,
-): Promise<ResolvedLlmSettings> {
-  const apiKey = firstNonEmpty(
-    partial?.apiKey,
-    process.env.LLM_API_KEY,
-    process.env.DEEPSEEK_API_KEY,
-    process.env.OPENAI_API_KEY,
-  );
-  const rawBaseUrl = firstNonEmpty(
-    partial?.baseUrl,
-    process.env.LLM_BASE_URL,
-    process.env.DEEPSEEK_BASE_URL,
-    process.env.OPENAI_BASE_URL,
-  );
-  const chatModel =
-    firstNonEmpty(
-      partial?.chatModel,
-      process.env.LLM_MODEL,
-      process.env.DEEPSEEK_MODEL,
-    ) ?? "deepseek-chat";
-  const embeddingModel =
-    firstNonEmpty(partial?.embeddingModel, process.env.EMBEDDING_MODEL) ??
-    "BAAI/bge-m3";
+export async function resolveLlmConnection(request: Request): Promise<{
+  apiKey: string;
+  baseUrl: string;
+}> {
+  const apiKey = headerValue(request, HEADER_API_KEY);
+  const rawBaseUrl = headerValue(request, HEADER_BASE_URL);
 
   if (!apiKey) {
-    throw new LlmSettingsError("LLM apiKey is not set");
+    throw new LlmSettingsError("LLM apiKey is not set", 401);
   }
 
   if (!rawBaseUrl) {
-    throw new LlmSettingsError("LLM baseUrl is not set");
+    throw new LlmSettingsError("LLM baseUrl is not set", 401);
   }
 
   let baseUrl: string;
   try {
     baseUrl = normalizeBaseUrl(rawBaseUrl);
   } catch {
-    throw new LlmSettingsError("LLM baseUrl is invalid");
+    throw new LlmSettingsError("LLM baseUrl is invalid", 400);
   }
 
   await assertSafeBaseUrl(baseUrl);
 
-  return {
-    apiKey,
-    baseUrl,
-    chatModel,
-    embeddingModel,
-  };
+  return { apiKey, baseUrl };
 }
 
-/** 空白视为未提供，以便回落到 env */
-function firstNonEmpty(
-  ...values: Array<string | undefined>
-): string | undefined {
-  for (const value of values) {
-    const trimmed = value?.trim();
-    if (trimmed) {
-      return trimmed;
-    }
+/** 把 OpenAI 兼容根路径规范成带 `/v1`、无末尾斜杠 */
+export function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  const url = new URL(trimmed);
+  let path = url.pathname.replace(/\/+$/, "");
+  if (!path.endsWith("/v1")) {
+    path = `${path}/v1`;
   }
-
-  return undefined;
+  url.pathname = path;
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
 }
 
 /**
  * 生产环境拦截指向本机、内网或云元数据的 baseUrl。
  * 开发环境不拦，方便本地 vLLM。
  */
-async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
+export async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
   if (process.env.NODE_ENV !== "production") {
     return;
   }
@@ -94,11 +81,11 @@ async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
   try {
     url = new URL(baseUrl);
   } catch {
-    throw new LlmSettingsError("LLM baseUrl is invalid");
+    throw new LlmSettingsError("LLM baseUrl is invalid", 400);
   }
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new LlmSettingsError("LLM baseUrl is not allowed");
+    throw new LlmSettingsError("LLM baseUrl is not allowed", 400);
   }
 
   const host = url.hostname.toLowerCase();
@@ -108,7 +95,7 @@ async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
     host === "metadata.google.internal" ||
     host === "169.254.169.254"
   ) {
-    throw new LlmSettingsError("LLM baseUrl is not allowed");
+    throw new LlmSettingsError("LLM baseUrl is not allowed", 400);
   }
 
   const addresses = isIP(host)
@@ -117,7 +104,7 @@ async function assertSafeBaseUrl(baseUrl: string): Promise<void> {
 
   for (const address of addresses) {
     if (isBlockedIp(address)) {
-      throw new LlmSettingsError("LLM baseUrl is not allowed");
+      throw new LlmSettingsError("LLM baseUrl is not allowed", 400);
     }
   }
 }
