@@ -24,9 +24,6 @@
 .DS_Store
 *.pem
 
-# project docs (local only)
-/docs
-
 # agent skills (local only)
 /.agents
 
