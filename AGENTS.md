@@ -12,7 +12,7 @@
 
 # 项目文档
 
- `docs/index.md` — 文档索引。
+ `docs/index.md` — 文档总索引；增删功能单元或调整依赖关系时请同步更新本页。
 
 # 实现前读什么
 
@@ -35,7 +35,6 @@
 | `pnpm lint`        | ESLint                                         |
 | `pnpm build`       | `prisma generate` + `next build`               |
 | `pnpm start`       | 生产模式启动（需先 build）                               |
-| `pnpm spec:index`  | 根据 feature spec frontmatter 生成 `docs/index.md` |
 | `pnpm db:generate` | 生成 Prisma Client                               |
 | `pnpm db:push`     | 推送 schema 到数据库（开发）                             |
 | `pnpm db:migrate`  | 迁移（开发）                                         |
