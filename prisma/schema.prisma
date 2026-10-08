@@ -24,8 +24,14 @@ model Stage {
   /// 课程描述（可选）
   description String?
 
-  /// 用户原始需求/提示词；仅 PDF 时可留空字符串
+  /// 用户原始需求/提示词（必填，去空白后至少 10 字）
   requirement String @default("")
+
+  /// 学习者昵称（可选；未填为 null，不写入学习者画像）
+  userNickname String? @map("user_nickname")
+
+  /// 学习者背景（可选；未填为 null，不写入学习者画像）
+  userBio String? @map("user_bio")
 
   /// 授课语言指令（大纲生成后写入，如「全程使用简体中文授课」）
   languageDirective String? @map("language_directive")

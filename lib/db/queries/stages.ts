@@ -1,7 +1,16 @@
 import { prisma } from "@/lib/db/client";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 
-export async function insertStage(data: { name: string; requirement: string }) {
+/**
+ * 插入课堂。提示词、昵称、背景分列写入；后两者未填时传 null。
+ * 不写 requirements JSON，也不解析 PDF。
+ */
+export async function insertStage(data: {
+  name: string;
+  requirement: string;
+  userNickname: string | null;
+  userBio: string | null;
+}) {
   return prisma.stage.create({ data });
 }
 

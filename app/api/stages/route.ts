@@ -2,24 +2,37 @@ import { createStage, StageValidationError } from "@/lib/services/stages";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
+/**
+ * 创建课堂。JSON 体为 { requirements }；multipart 的 requirements 是该对象的 JSON 字符串，pdf 可选。
+ * 不解析 PDF，不调用模型。校验失败 400，成功 201。
+ */
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
 
   try {
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
-      const requirementField = form.get("requirement");
+      const requirementsField = form.get("requirements");
       const pdfField = form.get("pdf");
 
-      const requirement =
-        typeof requirementField === "string" ? requirementField : undefined;
       const pdf = pdfField instanceof File ? pdfField : undefined;
 
       if (!pdf && pdfField != null && pdfField !== "") {
         return NextResponse.json({ error: "pdf must be a file" }, { status: 400 });
       }
 
-      const stage = await createStage({ requirement }, pdf);
+      if (typeof requirementsField !== "string" || requirementsField.trim() === "") {
+        return NextResponse.json({ error: "requirements is required" }, { status: 400 });
+      }
+
+      let requirements: unknown;
+      try {
+        requirements = JSON.parse(requirementsField);
+      } catch {
+        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      }
+
+      const stage = await createStage({ requirements }, pdf);
       return NextResponse.json(stage, { status: 201 });
     }
 

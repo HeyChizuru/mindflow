@@ -35,29 +35,42 @@ export const OUTLINES_STATUSES = [
 
 export type OutlinesStatus = (typeof OUTLINES_STATUSES)[number];
 
-/** POST /api/stages 请求体（JSON 或 multipart 的文本字段） */
-export type CreateStageBody = {
+/** 建课输入里的课程需求与可选学习者信息（规范化后空白字段省略） */
+export type StageRequirements = {
   requirement: string;
+  userNickname?: string;
+  userBio?: string;
 };
 
-/** 上传 PDF 后返回的文档摘要（尚未 ingest） */
+/** POST /api/stages 请求体。JSON 本体，或 multipart 字段 requirements 解析后的对象 */
+export type CreateStageBody = {
+  requirements: StageRequirements;
+};
+
+/** 上传 PDF 后返回的文档摘要（尚未 ingest，不含全文） */
 export type CreateStageDocument = {
   id: string;
   filename: string;
   storagePath: string;
 };
 
-/** POST /api/stages 成功响应（201） */
-export type CreateStageResponse = {
+/**
+ * 创建与按 id 读取的课堂 DTO。
+ * 创建时 status 为 draft、previewPhase 为 preparing、hasKnowledgeBase 为 false。
+ */
+export type StageResponse = {
   id: string;
   name: string;
-  requirement: string;
-  status: "draft";
-  previewPhase: "preparing";
+  requirements: StageRequirements;
+  status: StageStatus;
+  previewPhase: PreviewPhase;
   createdAt: string;
-  hasKnowledgeBase: false;
+  hasKnowledgeBase: boolean;
   document?: CreateStageDocument;
 };
+
+/** POST /api/stages 成功响应（201） */
+export type CreateStageResponse = StageResponse;
 
 /** API 错误响应体 */
 export type ApiErrorResponse = {

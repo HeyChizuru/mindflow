@@ -3,21 +3,25 @@ import path from "node:path";
 
 import { prisma } from "@/lib/db/client";
 import { deleteChunksByStageId } from "@/lib/db/queries/chunks";
-import { deleteDocumentsByStageId, insertDocument } from "@/lib/db/queries/documents";
+import {
+  deleteDocumentsByStageId,
+  getDocumentByStageId,
+  insertDocument,
+} from "@/lib/db/queries/documents";
 import { deleteStage, getStageById, insertStage } from "@/lib/db/queries/stages";
-import type { CreateStageResponse, DeleteStageResponse } from "@/lib/types/stage";
+import type { CreateStageDocument, CreateStageResponse, DeleteStageResponse } from "@/lib/types/stage";
 import { deriveStageName } from "@/lib/utils/derive-stage-name";
 import {
   createStageBodySchema,
-  createStageResponseSchema,
   deleteStageResponseSchema,
   stageIdSchema,
+  stageResponseSchema,
 } from "@/lib/validators/stages";
 
 /** PDF 体积上限（50MB），对齐 PRD */
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 
-/** 创建课堂参数不合法（缺 requirement、非 PDF、超 50MB 等） */
+/** 创建或读取课堂的参数不合法（提示词不合格、非 PDF、超 50MB、id 不是 uuid） */
 export class StageValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -34,25 +38,28 @@ export class StageNotFoundError extends Error {
 }
 
 /**
- * 创建课堂：提示词必填（至少 10 字），PDF 可选。
- * 有 PDF 时只写入 uploads/ 和 documents 元数据，不解析、不写 chunks。
+ * 创建课堂：requirements.requirement 必填（至少 10 字），昵称与背景可选，PDF 可选。
+ * 有 PDF 时只写入 uploads/ 和 documents 元数据，不解析、不写 chunks、不调用模型。
+ * 校验通过后才插入课堂；写盘失败时删除刚插入的行。
  */
 export async function createStage(
   input: unknown,
   pdf?: File,
 ): Promise<CreateStageResponse> {
-  const { requirement } = createStageBodySchema.parse(input);
+  const { requirements } = createStageBodySchema.parse(input);
   const hasPdf = pdf !== undefined;
 
   if (hasPdf) {
     assertPdf(pdf);
   }
 
-  const name = deriveStageName(requirement);
+  const name = deriveStageName(requirements.requirement);
 
   const stage = await insertStage({
     name,
-    requirement,
+    requirement: requirements.requirement,
+    userNickname: requirements.userNickname ?? null,
+    userBio: requirements.userBio ?? null,
   });
 
   if (!hasPdf) {
@@ -85,15 +92,34 @@ export async function createStage(
 }
 
 /**
+ * 按课堂 id 读回规范化 requirements 与文档摘要。
+ * 不读 PDF、不返回全文。不存在时抛 StageNotFoundError。
+ */
+export async function getStage(stageId: string): Promise<CreateStageResponse> {
+  const id = parseStageId(stageId);
+  const stage = await getStageById(id);
+  if (!stage) {
+    throw new StageNotFoundError("stage not found");
+  }
+
+  const document = await getDocumentByStageId(id);
+  return toResponse(
+    stage,
+    document
+      ? {
+          id: document.id,
+          filename: document.filename,
+          storagePath: document.storagePath,
+        }
+      : undefined,
+  );
+}
+
+/**
  * 删除课堂：显式清 chunks、documents、stage，再尽力删除 uploads/{id}。
  */
 export async function removeStage(stageId: string): Promise<DeleteStageResponse> {
-  const parsedId = stageIdSchema.safeParse(stageId);
-  if (!parsedId.success) {
-    throw new StageValidationError("stageId must be a uuid");
-  }
-
-  const id = parsedId.data;
+  const id = parseStageId(stageId);
   const stage = await getStageById(id);
   if (!stage) {
     throw new StageNotFoundError("stage not found");
@@ -111,28 +137,45 @@ export async function removeStage(stageId: string): Promise<DeleteStageResponse>
   return deleteStageResponseSchema.parse({ id });
 }
 
-/** 把 Prisma Stage 行映射为 API DTO（hasKnowledgeBase 固定为 false） */
+/** 把课堂行映射为 DTO。昵称、背景为空则不出现在 requirements 里 */
 function toResponse(
   stage: {
     id: string;
     name: string;
     requirement: string;
+    userNickname: string | null;
+    userBio: string | null;
     status: string;
     previewPhase: string;
+    hasKnowledgeBase: boolean;
     createdAt: Date;
   },
-  document?: CreateStageResponse["document"],
+  document?: CreateStageDocument,
 ): CreateStageResponse {
-  return createStageResponseSchema.parse({
+  return stageResponseSchema.parse({
     id: stage.id,
     name: stage.name,
-    requirement: stage.requirement,
+    requirements: {
+      requirement: stage.requirement,
+      ...(stage.userNickname ? { userNickname: stage.userNickname } : {}),
+      ...(stage.userBio ? { userBio: stage.userBio } : {}),
+    },
     status: stage.status,
     previewPhase: stage.previewPhase,
     createdAt: stage.createdAt.toISOString(),
-    hasKnowledgeBase: false,
+    hasKnowledgeBase: stage.hasKnowledgeBase,
     ...(document ? { document } : {}),
   });
+}
+
+/** 校验课堂 id 为 uuid，否则抛 StageValidationError */
+function parseStageId(stageId: string): string {
+  const parsedId = stageIdSchema.safeParse(stageId);
+  if (!parsedId.success) {
+    throw new StageValidationError("stageId must be a uuid");
+  }
+
+  return parsedId.data;
 }
 
 /** 校验为 PDF 且不超过 50MB */

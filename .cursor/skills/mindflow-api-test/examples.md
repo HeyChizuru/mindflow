@@ -1,50 +1,26 @@
-# MindFlow API 测试示例
+# 补充用例
 
-先执行 [SKILL.md](SKILL.md) 中的公共 setup（`$base`、`Write-JsonBodyFile`）。
+先跑 [SKILL.md](SKILL.md) 的 setup。响应一律 `-o` 再用 `Read-Utf8File`，不要 `$r = curl.exe`。
 
-## 错误用例
-
-**requirement 太短（期望 400，非 Invalid JSON body）**
+**提示词太短 → 400**
 
 ```powershell
-$path = Write-JsonBodyFile "short.json" '{"requirement":"short"}'
-curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
-  -H "Content-Type: application/json" `
-  --data-binary "@$path"
+$path = Write-JsonBodyFile "short.json" '{"requirements":{"requirement":"太短"}}'
+curl.exe -s -o "$tmpdir\short-res.json" -w "`nHTTP:%{http_code}`n" -X POST "$base/api/stages" -H "Content-Type: application/json" --data-binary "@$path"
+Read-Utf8File "$tmpdir\short-res.json"
 ```
 
-**multipart 仅 pdf、无 requirement（产品规格期望 400；当前实现可能仍 201）**
+**只传 PDF → 400，`requirements is required`**
 
 ```powershell
-curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
-  -F "pdf=@<绝对路径>\file.pdf;type=application/pdf"
+curl.exe -s -o "$tmpdir\pdf-only.json" -w "`nHTTP:%{http_code}`n" -X POST "$base/api/stages" -F "pdf=@C:\path\to\file.pdf;type=application/pdf"
+Read-Utf8File "$tmpdir\pdf-only.json"
 ```
 
-**非法 JSON 文件（期望 400 Invalid JSON body）**
+**空白昵称与背景 → 201，响应里没有这两个键**
 
 ```powershell
-$path = Join-Path $tmpdir "bad.json"
-[System.IO.File]::WriteAllText($path, "{not valid", (New-Object System.Text.UTF8Encoding $false))
-curl.exe -s -w "`nHTTP: %{http_code}`n" -X POST "$base/api/stages" `
-  -H "Content-Type: application/json" `
-  --data-binary "@$path"
-```
-
-**ingest 无 document 的 stage（期望 400）**
-
-对仅 JSON 创建的 stage 直接 ingest。
-
-## 备用：PowerShell 原生（不用 curl JSON）
-
-```powershell
-$body = @{ requirement = "设计一节关于光合作用的高中生物课，包含实验演示和小组讨论" } | ConvertTo-Json -Compress
-Invoke-RestMethod -Uri "$base/api/stages" -Method POST `
-  -ContentType "application/json; charset=utf-8" `
-  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
-```
-
-## 备用：curl --%（单行 JSON，无临时文件）
-
-```powershell
-curl.exe --% -s -X POST http://localhost:3001/api/stages -H "Content-Type: application/json" -d "{\"requirement\":\"biology lesson about photosynthesis with lab and discussion\"}"
+$path = Write-JsonBodyFile "blank.json" '{"requirements":{"requirement":"设计一节关于光合作用的高中生物课，包含实验演示和小组讨论","userNickname":"  ","userBio":""}}'
+curl.exe -s -o "$tmpdir\blank-res.json" -X POST "$base/api/stages" -H "Content-Type: application/json" --data-binary "@$path"
+Read-Utf8File "$tmpdir\blank-res.json"
 ```
