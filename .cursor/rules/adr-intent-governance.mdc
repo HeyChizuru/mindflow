@@ -12,22 +12,22 @@ alwaysApply: false
 - **标为 superseded**：从「遵守」行去掉该 id；旧文件保留，不删。
 - **尚未落盘的 ADR**：不要在 intent 里预写空链接。
 
-`id` 与文件名一致，例如 `docs/adr/adr-001-deployment-shape.md` → `adr-001-deployment-shape`。
+`id` 与文件名一致（不含标题说明），例如 `docs/adr/adr-001.md` → `adr-001`。
 
 ## 写法
 
 ```markdown
 ## 治理约束
 
-遵守 [[adr-001-deployment-shape]] [[adr-002-primary-storage]] [[adr-003-external-service-boundary]] [[adr-004-code-dependency-direction]]。
+遵守 [[adr-001]] [[adr-002]] [[adr-003]] [[adr-004]]。
 ```
 
 ```markdown
 <!-- ❌ 只建了 adr-005 文件，intent 仍停在四条 -->
-遵守 [[adr-001-deployment-shape]] [[adr-002-primary-storage]] [[adr-003-external-service-boundary]] [[adr-004-code-dependency-direction]]。
+遵守 [[adr-001]] [[adr-002]] [[adr-003]] [[adr-004]]。
 
 <!-- ✅ 同一轮加上新 id -->
-遵守 [[adr-001-deployment-shape]] [[adr-002-primary-storage]] [[adr-003-external-service-boundary]] [[adr-004-code-dependency-direction]] [[adr-005-example]]。
+遵守 [[adr-001]] [[adr-002]] [[adr-003]] [[adr-004]] [[adr-005]]。
 ```
 
 intent 仍不写 API、表结构、验收 ID。

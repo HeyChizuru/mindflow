@@ -5,7 +5,7 @@ title: 创建课堂
 spec_status: accepted
 delivery_status: planned
 requires: []
-governed_by: [intent, adr-001-deployment-shape, adr-002-primary-storage, adr-003-external-service-boundary]
+governed_by: [intent, adr-001, adr-002, adr-003]
 related_to: [文档入库, 流式大纲与手改]
 supersedes: []
 acceptance: [CC-1, CC-2, CC-3, CC-4]
@@ -58,5 +58,5 @@ acceptance: [CC-1, CC-2, CC-3, CC-4]
 
 ## 关系
 
-- 治理约束：[[intent]]、[[adr-001-deployment-shape]]、[[adr-002-primary-storage]]、[[adr-003-external-service-boundary]]
+- 治理约束：[[intent]]、[[adr-001]]、[[adr-002]]、[[adr-003]]
 - 相关：[[文档入库]]、[[流式大纲与手改]]。入库与大纲生成不在本单元内。

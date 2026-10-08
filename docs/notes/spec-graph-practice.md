@@ -74,7 +74,7 @@ docs/
   intent.md
   _index.md                # 自动生成，不手工维护状态
   adr/
-    001-deployment-shape.md
+    adr-001.md
   features/
     process-request/
       spec.md
@@ -94,7 +94,7 @@ title: 处理请求并保存结果
 spec_status: accepted       # draft | accepted | superseded
 delivery_status: planned    # planned | in_progress | verified
 requires: [submit-request]
-governed_by: [intent, adr-002-primary-storage]
+governed_by: [intent, adr-002]
 related_to: [view-result]
 supersedes: []
 acceptance: [PR-1, PR-2, PR-3]
@@ -173,7 +173,7 @@ verification:
 
 | 字段 | 含义 |
 |---|---|
-| `id` | ADR 的稳定唯一标识，例如 `adr-002-primary-storage` |
+| `id` | ADR 的稳定唯一标识，例如 `adr-002` |
 | `artifact` | 固定为 `adr` |
 | `adr_status` | `proposed` / `accepted` / `superseded` |
 

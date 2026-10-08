@@ -346,10 +346,10 @@ docs/
   intent.md                # 薄产品意图
   _index.md                # 由 frontmatter 生成，只读
   adr/
-    001-deployment-shape.md
-    002-primary-storage.md
-    003-external-service-boundary.md
-    004-code-dependency-direction.md
+    adr-001.md
+    adr-002.md
+    adr-003.md
+    adr-004.md
   features/
     submit-request/
       spec.md
@@ -437,8 +437,8 @@ spec_status: accepted
 目标用户按上面主路径能独立完成核心任务；无需解释「这里以后会接」；数据可恢复。
 
 ## 治理约束
-遵守 [[adr-001-deployment-shape]] [[adr-002-primary-storage]]
-[[adr-003-external-service-boundary]] [[adr-004-code-dependency-direction]]。
+遵守 [[adr-001]] [[adr-002]]
+[[adr-003]] [[adr-004]]。
 ```
 
 「给谁」只写首个可交付功能集实际服务的用户，不要提前写未来版本场景。
@@ -482,7 +482,7 @@ artifact: spec
 spec_status: accepted
 delivery_status: planned
 requires: [submit-request]
-governed_by: [intent, adr-002-primary-storage]
+governed_by: [intent, adr-002]
 related_to: [view-result]
 supersedes: []
 acceptance: [PR-1, PR-2, PR-3]
@@ -511,7 +511,7 @@ acceptance: [PR-1, PR-2, PR-3]
 
 ## 关系
 - 硬能力依赖：[[features/submit-request/spec]]
-- 治理约束：[[intent]]、[[adr-002-primary-storage]]
+- 治理约束：[[intent]]、[[adr-002]]
 ```
 
 过粗：一篇同时包含提交、处理、结果编辑、导出和权限。过细：为每个状态或事件单独写一篇。首个功能集通常 5～8 个单元足够。
@@ -520,7 +520,7 @@ acceptance: [PR-1, PR-2, PR-3]
 
 ```markdown
 ---
-id: adr-002-primary-storage
+id: adr-002
 artifact: adr
 adr_status: accepted
 ---

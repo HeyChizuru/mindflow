@@ -2,7 +2,7 @@
 feature_id: 创建课堂
 artifact: plan
 implements: [CC-1, CC-2, CC-3, CC-4]
-governed_by: [adr-002-primary-storage, adr-003-external-service-boundary, adr-004-code-dependency-direction]
+governed_by: [adr-002, adr-003, adr-004]
 ---
 
 # 创建课堂后端接口
@@ -52,7 +52,7 @@ governed_by: [adr-002-primary-storage, adr-003-external-service-boundary, adr-00
 
 ## 存储
 
-`implements: CC-2`　`governed_by: adr-002-primary-storage`
+`implements: CC-2`　`governed_by: adr-002`
 
 在 `stage` 上新增可空列，Prisma 字段与现有 `@map` 风格一致：
 
@@ -69,7 +69,7 @@ governed_by: [adr-002-primary-storage, adr-003-external-service-boundary, adr-00
 
 ## 分层
 
-`governed_by: adr-004-code-dependency-direction`
+`governed_by: adr-004`
 
 沿现有方向改，不把 HTTP 状态码放进 service：
 

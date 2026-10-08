@@ -11,10 +11,10 @@
 
 架构决策在 [adr](./adr)。这里只列标题，决定写在各篇 ADR 里。
 
-- [部署形态（MVP）](./adr/adr-001-deployment-shape.md)
-- [主数据存储](./adr/adr-002-primary-storage.md)
-- [外部服务边界（LLM / RAG）](./adr/adr-003-external-service-boundary.md)
-- [代码依赖方向](./adr/adr-004-code-dependency-direction.md)
+- [部署形态（MVP）](./adr/adr-001.md)
+- [主数据存储](./adr/adr-002.md)
+- [外部服务边界（LLM / RAG）](./adr/adr-003.md)
+- [代码依赖方向](./adr/adr-004.md)
 
 ## 功能模块
 

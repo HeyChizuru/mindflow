@@ -22,7 +22,7 @@ lib/types → lib/validators → lib/services → lib/db/queries → app/api
 
 Prisma 模型不直接暴露给前端；DTO 中 `Date` → ISO `string`。
 
-**新增 API**：可复用契约与能力仍按 types → validators → services → route 添加。Route 可以编排已有服务，不必把流程全部下沉成空壳。播放、草稿、交互可留在浏览器。与 [docs/adr/adr-004-code-dependency-direction.md](docs/adr/adr-004-code-dependency-direction.md) 一致。
+**新增 API**：可复用契约与能力仍按 types → validators → services → route 添加。Route 可以编排已有服务，不必把流程全部下沉成空壳。播放、草稿、交互可留在浏览器。与 [docs/adr/adr-004.md](docs/adr/adr-004.md) 一致。
 
 **前端**：`import type` 从 `@/lib/types/*`；可 import validators 校验响应；不 import services、db。
 
