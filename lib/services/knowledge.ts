@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { prisma } from "@/lib/db/client";
 import { deleteChunksByStageId, insertChunks } from "@/lib/db/queries/chunks";
 import { getDocumentByStageId, updateDocumentParse } from "@/lib/db/queries/documents";
 import { getStageById, setStageHasKnowledgeBase } from "@/lib/db/queries/stages";
 import type { EmbeddingModel } from "ai";
 
 import { splitPagesToChunks } from "@/lib/knowledge/chunk";
-import { embedTexts } from "@/lib/knowledge/embed";
+import { EmbeddingDimensionError, embedTexts } from "@/lib/knowledge/embed";
 import { parsePdf } from "@/lib/knowledge/parse";
 import type { IngestResponse } from "@/lib/types/knowledge";
 import {
@@ -35,8 +36,9 @@ export class KnowledgeNotFoundError extends Error {
 }
 
 /**
- * 确认生成：读 PDF → 抽文本 → 切分 → 向量化写入 chunks，并打开 hasKnowledgeBase。
- * 已 ingest 过则覆盖切块与向量。embeddingModel 由 Route 注入，本函数不读请求头。
+ * 读取已保存的 PDF，解析、按页切块并写入向量，然后打开 hasKnowledgeBase。
+ * 向量化完成前不写库。页数、全文、切块替换与开关在同一事务提交；失败则整单回滚。
+ * embeddingModel 由 Route 注入，本函数不读请求头，不调用对话模型。
  */
 export async function ingestStage(
   stageId: string,
@@ -84,7 +86,7 @@ export async function ingestStage(
     throw new KnowledgeValidationError("no chunks produced from parsed text");
   }
 
-  const embeddings = await embedTexts(
+  const embeddings = await embedVectors(
     chunks.map((chunk) => chunk.content),
     options.embeddingModel,
   );
@@ -92,24 +94,29 @@ export async function ingestStage(
     throw new Error("embedding count does not match chunk count");
   }
 
-  await updateDocumentParse({
-    id: document.id,
-    pageCount: pages.length,
-    rawText,
+  await prisma.$transaction(async (tx) => {
+    await updateDocumentParse(
+      {
+        id: document.id,
+        pageCount: pages.length,
+        rawText,
+      },
+      tx,
+    );
+    await deleteChunksByStageId(id, tx);
+    await insertChunks(
+      chunks.map((chunk, index) => ({
+        stageId: id,
+        documentId: document.id,
+        content: chunk.content,
+        page: chunk.page,
+        chunkIndex: chunk.chunkIndex,
+        embedding: embeddings[index],
+      })),
+      tx,
+    );
+    await setStageHasKnowledgeBase(id, true, tx);
   });
-
-  await deleteChunksByStageId(id);
-  await insertChunks(
-    chunks.map((chunk, index) => ({
-      stageId: id,
-      documentId: document.id,
-      content: chunk.content,
-      page: chunk.page,
-      chunkIndex: chunk.chunkIndex,
-      embedding: embeddings[index],
-    })),
-  );
-  await setStageHasKnowledgeBase(id, true);
 
   return ingestResponseSchema.parse({
     stageId: id,
@@ -119,6 +126,29 @@ export async function ingestStage(
     chunkCount: chunks.length,
     hasKnowledgeBase: true,
   });
+}
+
+/**
+ * 调用向量模型。维度不符或含非有限数字时抛 KnowledgeValidationError，不写库。
+ */
+async function embedVectors(
+  texts: string[],
+  model: EmbeddingModel,
+): Promise<number[][]> {
+  try {
+    const embeddings = await embedTexts(texts, model);
+    for (const embedding of embeddings) {
+      if (embedding.some((value) => !Number.isFinite(value))) {
+        throw new KnowledgeValidationError("embedding contains non-finite numbers");
+      }
+    }
+    return embeddings;
+  } catch (error) {
+    if (error instanceof EmbeddingDimensionError) {
+      throw new KnowledgeValidationError(error.message);
+    }
+    throw error;
+  }
 }
 
 /** 把 documents.storage_path 解析到 UPLOAD_DIR 内的绝对路径，拒绝逃逸 */

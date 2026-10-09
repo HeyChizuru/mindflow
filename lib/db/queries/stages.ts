@@ -26,9 +26,16 @@ export async function deleteStage(
   return db.stage.delete({ where: { id } });
 }
 
-/** ingest 完成后打开 RAG 开关 */
-export async function setStageHasKnowledgeBase(id: string, value: boolean) {
-  return prisma.stage.update({
+/**
+ * 设置知识库开关。
+ * db 可传入事务客户端，便于与切块写入一起提交。
+ */
+export async function setStageHasKnowledgeBase(
+  id: string,
+  value: boolean,
+  db: Pick<PrismaClient, "stage"> = prisma,
+) {
+  return db.stage.update({
     where: { id },
     data: { hasKnowledgeBase: value },
   });

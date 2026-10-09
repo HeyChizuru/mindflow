@@ -18,15 +18,20 @@ type ChunkInsert = {
   embedding: number[];
 };
 
-/** 批量插入切块；必须带 1024 维 embedding，禁止无向量入库 */
-export async function insertChunks(rows: ChunkInsert[]) {
+type ChunkWriter = Pick<PrismaClient, "$executeRaw">;
+
+/**
+ * 批量插入切块。必须带 1024 维向量，禁止无向量入库。
+ * db 可传入事务客户端，默认使用全局客户端。
+ */
+export async function insertChunks(rows: ChunkInsert[], db: ChunkWriter = prisma) {
   if (rows.length === 0) {
     return { count: 0 };
   }
 
   for (const row of rows) {
     const vector = Prisma.raw(`'${toVectorLiteral(row.embedding)}'::vector`);
-    await prisma.$executeRaw`
+    await db.$executeRaw`
       INSERT INTO chunks (id, stage_id, document_id, content, page, chunk_index, embedding)
       VALUES (
         gen_random_uuid(),

@@ -3,7 +3,7 @@ feature_id: 创建课堂
 artifact: spec
 title: 创建课堂
 spec_status: accepted
-delivery_status: planned
+delivery_status: in_progress 
 requires: []
 governed_by: [intent, adr-001, adr-002, adr-003]
 related_to: [文档入库, 流式大纲与手改]

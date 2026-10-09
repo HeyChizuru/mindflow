@@ -14,13 +14,19 @@ export async function getDocumentByStageId(stageId: string) {
   return prisma.document.findFirst({ where: { stageId } });
 }
 
-/** ingest 后回写页数与全文；不改 hasKnowledgeBase */
-export async function updateDocumentParse(data: {
-  id: string;
-  pageCount: number;
-  rawText: string;
-}) {
-  return prisma.document.update({
+/**
+ * 回写页数与全文，不改 hasKnowledgeBase。
+ * db 可传入事务客户端，便于与切块替换一起提交。
+ */
+export async function updateDocumentParse(
+  data: {
+    id: string;
+    pageCount: number;
+    rawText: string;
+  },
+  db: Pick<PrismaClient, "document"> = prisma,
+) {
+  return db.document.update({
     where: { id: data.id },
     data: {
       pageCount: data.pageCount,
