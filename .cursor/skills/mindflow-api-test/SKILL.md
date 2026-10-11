@@ -69,6 +69,60 @@ Read-Utf8File "$tmpdir\get-res.json"
 curl.exe -s -o "$tmpdir\del-res.json" -w "`nHTTP:%{http_code}`n" -X DELETE "$base/api/stages/$stageId"
 ```
 
+## 模型请求头（ingest / 流式大纲）
+
+服务端**不**读 `.env` 里的 Key。本地测时从仓库根 `.env` 用 `Get-EnvVal` 读出再塞进请求头；不要把密钥写进 skill 或提交到 git。
+
+对话与向量是**两套**头，可指向不同厂商（ADR-003）：
+
+| 链路 | 请求头 |
+|------|--------|
+| 对话 | `x-mindflow-llm-chat-api-key`、`x-mindflow-llm-chat-base-url`、`x-mindflow-llm-chat-model` |
+| 向量 | `x-mindflow-llm-embedding-api-key`、`x-mindflow-llm-embedding-base-url`、`x-mindflow-llm-embedding-model` |
+
+```powershell
+function Get-EnvVal([string]$name) {
+  $text = [System.IO.File]::ReadAllText(".env", [System.Text.UTF8Encoding]::new($false))
+  if ($text -match "(?m)^$name=(.*)$") { return $Matches[1].Trim().Trim('"') }
+  throw "missing $name"
+}
+
+$chatKey = Get-EnvVal "DEEPSEEK_API_KEY"
+$chatBase = Get-EnvVal "DEEPSEEK_BASE_URL"
+$chatModel = Get-EnvVal "DEEPSEEK_MODEL"
+$embedKey = Get-EnvVal "OPENAI_API_KEY"
+$embedBase = Get-EnvVal "OPENAI_BASE_URL"
+$embedModel = Get-EnvVal "EMBEDDING_MODEL"
+
+$chatHeaders = @(
+  "-H", "x-mindflow-llm-chat-api-key: $chatKey",
+  "-H", "x-mindflow-llm-chat-base-url: $chatBase",
+  "-H", "x-mindflow-llm-chat-model: $chatModel"
+)
+$embedHeaders = @(
+  "-H", "x-mindflow-llm-embedding-api-key: $embedKey",
+  "-H", "x-mindflow-llm-embedding-base-url: $embedBase",
+  "-H", "x-mindflow-llm-embedding-model: $embedModel"
+)
+```
+
+**`POST /api/stages/{id}/ingest`**：仅向量三头 → 201，`hasKnowledgeBase` 为 true。
+
+```powershell
+curl.exe -s -o "$tmpdir\ingest.json" -w "`nHTTP:%{http_code}`n" -X POST "$base/api/stages/$stageId/ingest" @embedHeaders
+Read-Utf8File "$tmpdir\ingest.json"
+```
+
+**`POST /api/generate/scene-outlines-stream`**：body `{"stageId":"<uuid>"}`，SSE 响应。
+
+- 无知识库：只带 `$chatHeaders`。
+- 知识库已就绪：同一次 POST 带 `$chatHeaders` + `$embedHeaders`（共 6 头）。
+
+```powershell
+$body = Write-JsonBodyFile "stream.json" "{`"stageId`":`"$stageId`"}"
+curl.exe -s -N -o "$tmpdir\stream.txt" -w "`nHTTP:%{http_code}`n" -X POST "$base/api/generate/scene-outlines-stream" -H "Content-Type: application/json" --data-binary "@$body" @chatHeaders @embedHeaders
+```
+
 ## 期望失败（400，且不新建课堂）
 
 | 情况 | 要点 |

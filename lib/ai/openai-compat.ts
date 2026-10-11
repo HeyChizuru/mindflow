@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import {
   LlmSettingsError,
   headerValue,
-  resolveLlmConnection,
+  resolveChatConnection,
 } from "@/lib/ai/llm-connection";
 
 export { LlmSettingsError };
@@ -11,7 +11,7 @@ export { LlmSettingsError };
 const HEADER_CHAT_MODEL = "x-mindflow-llm-chat-model";
 
 /**
- * 从请求头解析语言模型：Key + Base-Url + Chat-Model。
+ * 从请求头解析语言模型：chat Key + chat Base-Url + Chat-Model。
  * 不读 embedding 头、不读 env；缺头 401，非法 Url / 生产 SSRF 400。
  */
 export async function requireChatModel(request: Request) {
@@ -20,7 +20,7 @@ export async function requireChatModel(request: Request) {
     throw new LlmSettingsError("LLM chatModel is not set", 401);
   }
 
-  const { apiKey, baseUrl } = await resolveLlmConnection(request);
+  const { apiKey, baseUrl } = await resolveChatConnection(request);
   const client = createOpenAI({
     apiKey,
     baseURL: baseUrl,

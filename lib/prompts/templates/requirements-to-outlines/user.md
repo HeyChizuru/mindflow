@@ -1,4 +1,4 @@
-Please generate scene outlines based on the following course requirements.
+Generate scene outlines from the following course requirement.
 
 ---
 
@@ -8,90 +8,79 @@ Please generate scene outlines based on the following course requirements.
 
 ---
 
+{{#if userProfile}}
+## Learner profile
+
 {{userProfile}}
 
-## Language Context
-
-Infer the course language directive by applying the decision rules from the system prompt. Key reminders:
-- Requirement language = teaching language (unless overridden by explicit request or learner context)
-- Foreign language learning → teach in user's native language, not the target language
-- PDF language does NOT override teaching language — translate/explain document content instead
-
 ---
 
-## Reference Materials
+{{/if}}
+## Language context
 
-### PDF Content Summary
+Apply the language inference rules from the system prompt. The requirement language is the default teaching language unless the user overrides it.
 
-{{pdfContent}}
-
-### Available Images
-
-{{availableImages}}
-
-### Web Search Results
-
-{{researchContext}}
-
-{{teacherContext}}
-
+{{#if retrievalExcerpts}}
 ---
 
-## Output Requirements
+## Document excerpts (from knowledge base)
 
-Please automatically infer the following from user requirements:
+Use only to inform topic and keyPoints. Do not invent citations or page numbers.
+
+{{retrievalExcerpts}}
+
+{{/if}}
+---
+
+## Output requirements
+
+Infer from the user requirement:
 
 - Course topic and core content
-- Target audience and difficulty level
-- Course duration (default 15-30 minutes if not specified)
-- Teaching style (formal/casual/interactive/academic)
-- Visual style (minimal/colorful/professional/playful)
+- Target audience and difficulty
+- Course duration (default 15–30 minutes if unspecified)
+- Teaching style (formal / casual / interactive / academic)
+- Visual style (minimal / colorful / professional / playful)
 
-Then output your response as a single JSON object.
+Then output a **single JSON object**.
 
-**Top-level shape — this is what you MUST return:**
+**Top-level shape — you MUST return:**
 
 ```json
 {
-  "languageDirective": "2-5 sentence instruction describing the course language behavior",
-  "outlines": [ /* array of scene objects, schema described below */ ]
+  "languageDirective": "2-5 sentences describing course language behavior",
+  "outlines": [ /* array of scene objects, schema below */ ]
 }
 ```
 
 Never return a bare array. Never omit `languageDirective`. Both keys are required.
 
-**Each scene inside the `outlines` array has this minimum shape:**
+**Each scene in the `outlines` array must include at least:**
 
 ```json
 {
   "id": "scene_1",
-  "type": "slide" | "quiz" | "interactive" | "pbl",
-  "title": "Scene Title",
-  "description": "Teaching purpose description",
+  "type": "slide" | "quiz",
+  "title": "Scene title",
+  "description": "Teaching purpose",
   "keyPoints": ["Point 1", "Point 2", "Point 3"],
   "order": 1
 }
 ```
 
-### Special Notes
+### Special notes
 
-- **quiz scenes must include quizConfig**:
-   ```json
-   "quizConfig": {
-     "questionCount": 2,
-     "difficulty": "easy" | "medium" | "hard",
-     "questionTypes": ["single", "multiple"]
-   }
-   ```
-{{#if hasSourceImages}}
-- **If source images are available**, add `suggestedImageIds` to relevant slide scenes. Only use image IDs listed under Available Images.
-{{/if}}
-- **Interactive scenes**: If a concept benefits from hands-on simulation/visualization, use `"type": "interactive"` with `widgetType` and `widgetOutline` fields. Limit to 1-2 per course.
-   - Select widgetType based on concept: simulation (physics/chem), diagram (processes), code (programming), game (practice), visualization3d (3D models)
-   - Provide appropriate widgetOutline for the widget type
-- **Scene count**: Based on inferred duration, typically 1-2 scenes per minute
-- **Quiz placement**: Recommend inserting a quiz every 3-5 slides for assessment
-- **Language**: Infer from the user's requirement text and context, then output all content in the inferred language
-- **If web search results are provided**, reference specific findings and sources in scene descriptions and keyPoints. The search results provide up-to-date information — incorporate it to make the course content current and accurate.
+- **Quiz scenes must include `quizConfig`**:
+  ```json
+  "quizConfig": {
+    "questionCount": 2,
+    "difficulty": "easy" | "medium" | "hard",
+    "questionTypes": ["single", "multiple", "short_answer"]
+  }
+  ```
+- **Scene count**: Based on inferred duration, typically 1–2 scenes per minute.
+- **Quiz placement**: Insert a `quiz` every 3–5 `slide` scenes for assessment.
+- **Language**: Infer from the requirement and context; output all scene content in that language.
+- **If knowledge-base excerpts appear above**: Reflect facts and terms from the excerpts in `description` and `keyPoints`; do not invent page numbers, citations, or content not present in the excerpts.
 
-**Final reminder**: your entire response must be a JSON **object** with exactly two top-level keys — `languageDirective` (string) and `outlines` (array). Do not return a bare array. Do not wrap in prose or code fences.
+**Final reminder**: Your entire response must be a JSON **object** with exactly two top-level keys — `languageDirective` (string) and `outlines` (array). Do not return a bare array. Do not wrap the JSON in prose or code fences.
