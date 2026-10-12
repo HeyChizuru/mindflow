@@ -1,12 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 175 56" fill="none" role="img" aria-label="MindFlow">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 9 139 34" fill="none" role="img" aria-label="MindFlow">
   <title>MindFlow</title>
+  <defs>
+    <linearGradient
+      id="mindflow-brand"
+      x1="10"
+      y1="26"
+      x2="149"
+      y2="26"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0%" stop-color="#6D28D9" />
+      <stop offset="38%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
 
   <!-- Big M behind the wordmark, wrapping the lowercase m -->
   <g transform="translate(8, 2) scale(0.46)">
     <path
-      d="M 12 78 L 28 22 L 50 50 L 72 22 L 85 38"
-      stroke="currentColor"
-      stroke-width="7.5"
+      d="M 12 78
+         C 12 56, 17 28, 31 22
+         C 40 18, 46 40, 50 49
+         C 54 58, 61 28, 70 22
+         C 77 26, 82 31, 84 35
+         L 86 38"
+      stroke="url(#mindflow-brand)"
+      stroke-width="8"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
@@ -20,7 +39,7 @@
     font-family="Geist, &quot;SF Pro Display&quot;, Inter, ui-sans-serif, system-ui, sans-serif"
     font-size="27"
     letter-spacing="-1.35"
-    fill="currentColor"
+    fill="url(#mindflow-brand)"
     text-rendering="geometricPrecision"
   >
     <tspan font-weight="600">mind</tspan><tspan font-weight="400" dx="0.5">flow</tspan>

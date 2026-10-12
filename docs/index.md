@@ -34,7 +34,7 @@ flowchart LR
 
 | feature_id | spec_status | delivery_status | requires | 文件 |
 |---|---|---|---|---|
-| 创建课堂 | accepted | in_progress | — | [spec](./features/创建课堂/spec.md) |
+| 创建课堂 | accepted | in_progress | — | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md) · [tasks](./features/创建课堂/tasks.md) |
 | 后台续生成 | draft | planned | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) |
 | 课堂播放与测验 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) |
 | 课堂讨论 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md) |

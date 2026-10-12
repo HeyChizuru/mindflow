@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { cn } from "@/lib/utils/cn";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 const inter = localFont({
@@ -29,8 +30,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         className={`${GeistSans.variable} ${GeistMono.variable} min-h-full flex flex-col font-sans antialiased`}
         suppressHydrationWarning
       >
-        {children}
-        <Toaster />
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

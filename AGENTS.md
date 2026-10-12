@@ -12,33 +12,32 @@
 
 # 项目文档
 
- `docs/index.md` — 文档总索引；增删功能单元或调整依赖关系时请同步更新本页。
+`[docs/index.md](docs/index.md)` — 文档总索引；增删功能单元或调整依赖关系时请同步更新本页。
 
-# 实现前读什么
+# 项目规范(改代码时务必遵守)
 
-**最小文档上下文**：
- 1.该功能的 [docs/features//spec.md](docs/features/) — 承诺、验收 ID、不变量。该功能的可验收契约；改行为先改 spec，再改代码。
- 2.同目录下的 `plan.md` / `tasks.md`（若存在，仅作施工参考）。
-
-**`仍须读代码与测试**。「最小上下文」不等于禁止查看实现、Prisma schema、现有 Route 与测试文件。
+- 动手前读该功能 `[spec.md](docs/features/)`（承诺、验收 ID）；有则读同目录 `plan.md` / `tasks.md`，并对照代码与测试，确认文档未过期。
+- 用户诉求、实现与文档不一致时：向用户说明（可标验收 ID 或 plan/tasks 条目）；**先改文档再写代码**（承诺→`spec`，路径与阶段→`plan`/`tasks`）。未对齐勿大规模改实现。
 
 ---
+
+
 
 # 本地命令
 
 使用 **pnpm**（仓库根目录）：
 
 
-| 命令                 | 用途                                             |
-| ------------------ | ---------------------------------------------- |
-| `pnpm dev`         | 开发服务器，端口 **3001**                              |
-| `pnpm lint`        | ESLint                                         |
-| `pnpm build`       | `prisma generate` + `next build`               |
-| `pnpm start`       | 生产模式启动（需先 build）                               |
-| `pnpm db:generate` | 生成 Prisma Client                               |
-| `pnpm db:push`     | 推送 schema 到数据库（开发）                             |
-| `pnpm db:migrate`  | 迁移（开发）                                         |
-| `pnpm db:studio`   | Prisma Studio                                  |
+| 命令                 | 用途                               |
+| ------------------ | -------------------------------- |
+| `pnpm dev`         | 开发服务器，端口 **3001**                |
+| `pnpm lint`        | ESLint                           |
+| `pnpm build`       | `prisma generate` + `next build` |
+| `pnpm start`       | 生产模式启动（需先 build）                 |
+| `pnpm db:generate` | 生成 Prisma Client                 |
+| `pnpm db:push`     | 推送 schema 到数据库（开发）               |
+| `pnpm db:migrate`  | 迁移（开发）                           |
+| `pnpm db:studio`   | Prisma Studio                    |
 
 
 ---
@@ -56,7 +55,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 
-<!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
 
@@ -64,4 +62,3 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
-<!-- END:nextjs-agent-rules -->
