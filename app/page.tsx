@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowUp,
@@ -23,6 +24,8 @@ import { useUserProfileStore, AVATAR_OPTIONS } from "@/lib/store/user-profile";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDraftCache } from "@/lib/hooks/use-draft-cache";
+import { buildCreateStageBody, createStage, CreateStageError } from "@/lib/client/stages";
+import { validatePdfFile } from "@/lib/client/pdf";
 
 interface FormState {
   pdfFile: File | null;
@@ -36,13 +39,19 @@ const initialFormState: FormState = {
 
 function HomePage() {
   const { t } = useI18n();
+  const router = useRouter();
   const { theme, setTheme, mounted: themeMounted } = useTheme();
+  const nickname = useUserProfileStore((s) => s.nickname);
+  const bio = useUserProfileStore((s) => s.bio);
   const [form, setForm] = useState<FormState>(initialFormState);
+  const [submitting, setSubmitting] = useState(false);
 
   const { cachedValue: cachedRequirement, updateCache: updateRequirementCache } =
     useDraftCache<string>({ key: "requirementDraft" });
 
   const draftRestoredRef = useRef(false);
+  /** 同步防连点；成功跳转前保持 true，仅失败时重置 */
+  const submitInFlightRef = useRef(false);
   /* eslint-disable react-hooks/set-state-in-effect -- Hydration from localStorage must happen in effect */
   useEffect(() => {
     if (draftRestoredRef.current) return;
@@ -77,21 +86,66 @@ function HomePage() {
     }
   };
 
-  const handleGenerate = () => {
-    if (!form.requirement.trim()) {
-      setError(t("upload.requirementRequired"));
+  const builtBody = useMemo(
+    () =>
+      buildCreateStageBody({
+        requirement: form.requirement,
+        nickname,
+        bio,
+      }),
+    [form.requirement, nickname, bio],
+  );
+
+  const pdfValidationKey = useMemo(
+    () => (form.pdfFile ? validatePdfFile(form.pdfFile) : null),
+    [form.pdfFile],
+  );
+
+  const canSubmit =
+    builtBody.ok && pdfValidationKey === null && !submitting;
+
+  const resolveSubmitBlockError = useCallback((): string | null => {
+    if (submitting || submitInFlightRef.current) return null;
+    if (!builtBody.ok) return t(builtBody.errorKey);
+    if (pdfValidationKey) return t(pdfValidationKey);
+    return null;
+  }, [builtBody, pdfValidationKey, submitting, t]);
+
+  const handleGenerate = async () => {
+    if (submitInFlightRef.current) return;
+
+    const blockError = resolveSubmitBlockError();
+    if (blockError) {
+      setError(blockError);
       return;
     }
+    if (!builtBody.ok) {
+      setError(t("upload.generateFailed"));
+      return;
+    }
+
+    submitInFlightRef.current = true;
     setError(null);
-    toast.message("接口联调待接");
+    setSubmitting(true);
+    try {
+      const stage = await createStage(builtBody.body, form.pdfFile ?? undefined);
+      router.push(`/generation-preview/${stage.id}`);
+    } catch (err) {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
+      const message =
+        err instanceof CreateStageError
+          ? err.message
+          : t("upload.generateFailed");
+      setError(message);
+    }
   };
 
-  const canGenerate = !!form.requirement.trim();
   // 同时按下 Meta 键（Windows 上是 Ctrl 键）和 Enter 键时触发生成
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (canGenerate) handleGenerate();
+      if (canSubmit) void handleGenerate();
     }
   };
 
@@ -275,16 +329,20 @@ function HomePage() {
               {/* Send button */}
               {/* 发送按钮 */}
               <button
-                onClick={handleGenerate}
-                disabled={!canGenerate}
+                type="button"
+                onClick={() => void handleGenerate()}
+                disabled={!canSubmit}
+                aria-busy={submitting}
                 className={cn(
                   'shrink-0 h-8 rounded-lg flex items-center justify-center gap-1.5 transition-all px-3',
-                  canGenerate
+                  canSubmit
                     ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm cursor-pointer'
                     : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
                 )}
               >
-                <span className="text-xs font-medium">{t('toolbar.enterClassroom')}</span>
+                <span className="text-xs font-medium">
+                  {submitting ? t('upload.submitting') : t('toolbar.enterClassroom')}
+                </span>
                 <ArrowUp className="size-3.5" />
               </button>
             </div>

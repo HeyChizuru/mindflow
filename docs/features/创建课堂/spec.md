@@ -3,7 +3,7 @@ feature_id: 创建课堂
 artifact: spec
 title: 创建课堂
 spec_status: accepted
-delivery_status: in_progress
+delivery_status: verified
 requires: []
 governed_by: [intent, adr-001, adr-002, adr-003]
 related_to: [文档入库, 流式大纲与手改, 配置模型]
@@ -77,12 +77,12 @@ acceptance: [CC-1, CC-2, CC-3, CC-4, CC-5, CC-6]
 
 | ID | 怎么验 | 通过 |
 |---|---|---|
-| CC-1 | 合法提示词、不上传 PDF，点击开始生成 | 进入该课生成预览；读回的 `requirements.requirement` 与提交一致（已去空白）；知识库未就绪 |
-| CC-2 | 分别提交：仅昵称、仅背景、两者都有、两者都空白 | 非空字段读回一致；都空白时读回不含昵称与背景 |
-| CC-3 | 合法提示词 + 一份合法 PDF | 进入该课预览；能读到文档文件名与存储位置一类元数据；知识库仍未就绪；原文不被解析 |
-| CC-4 | 提示词短于 10 字；无法解析的需求；非 PDF、空文件、超过 50MB；只传 PDF 不传合格提示词 | 看到可理解错误；可再次提交；没有新的可访问课堂 |
-| CC-5 | 成功建课后记下预览所对应的课堂 id，关掉页面再凭该 id 打开 | 仍能读回同一份已保存需求（及 PDF 元数据，若有）；不依赖当次浏览器临时草稿才能找到这节课 |
-| CC-6 | 需求不足 10 字时看按钮与点击结果；合格需求连续快速点击开始生成 | 不合格时留在首页并提示；进行中的提交不会建出多节课 |
+| CC-1 | 合法提示词、不上传 PDF，点击开始生成 | 是（[tasks](./tasks.md) V-1；`GET /api/stages/{id}` 读回） |
+| CC-2 | 分别提交：仅昵称、仅背景、两者都有、两者都空白 | 是（tasks V-2） |
+| CC-3 | 合法提示词 + 一份合法 PDF | 是（tasks V-3；`hasKnowledgeBase: false`） |
+| CC-4 | 提示词短于 10 字；无法解析的需求；非 PDF、空文件、超过 50MB；只传 PDF 不传合格提示词 | 是（tasks V-4；不足 10 字时按钮禁用，选文件时 PDF 错误文案） |
+| CC-5 | 成功建课后记下预览所对应的课堂 id，关掉页面再凭该 id 打开 | 是（tasks V-1；预览占位展示 id，持久化以 GET 为准） |
+| CC-6 | 需求不足 10 字时看按钮与点击结果；合格需求连续快速点击开始生成 | 是（tasks V-4；`submitting` + `submitInFlightRef` 至跳转前） |
 
 ## 系统不变量
 

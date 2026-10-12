@@ -3,10 +3,16 @@
 /** MVP 中文文案，替代开源 i18n（阶段 A 静态页） */
 const MESSAGES: Record<string, string> = {
   "upload.requirementRequired": "请填写课程需求",
+  "upload.requirementTooShort": "课程需求至少 10 个字",
+  "upload.requirementTooLong": "课程需求不能超过 10000 个字",
   "upload.requirementPlaceholder": "描述你想学的课程，例如：用 20 分钟入门 Python 列表与字典",
   "upload.generateFailed": "提交失败，请稍后重试",
   "upload.fileTooLarge": "PDF 不能超过 50MB",
+  "upload.pdfInvalid": "请上传 PDF 文件",
+  "upload.pdfEmpty": "PDF 文件不能为空",
   "upload.pdfSizeLimit": "支持 PDF，最大 50MB",
+  "upload.submitting": "提交中…",
+  "upload.createResponseInvalid": "服务返回异常，请稍后重试",
   "toolbar.pdfUpload": "点击或拖拽上传 PDF",
   "toolbar.removePdf": "移除 PDF",
   "home.slogan": "用提示词生成可播放的互动课程",

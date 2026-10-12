@@ -4,10 +4,9 @@ import { FileText, Paperclip, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { validatePdfFile } from "@/lib/client/pdf";
 import { useI18n } from "@/lib/hooks/use-i18n";
 import { cn } from "@/lib/utils";
-
-const MAX_PDF_BYTES = 50 * 1024 * 1024;
 
 type GenerationToolbarProps = {
   pdfFile: File | null;
@@ -37,16 +36,9 @@ export function GenerationToolbar({
   );
 
   const handleFileSelect = (file: File) => {
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      onPdfError("请上传 PDF 文件");
-      return;
-    }
-    if (file.size === 0) {
-      onPdfError("PDF 文件不能为空");
-      return;
-    }
-    if (file.size > MAX_PDF_BYTES) {
-      onPdfError(t("upload.fileTooLarge"));
+    const pdfErrorKey = validatePdfFile(file);
+    if (pdfErrorKey) {
+      onPdfError(t(pdfErrorKey));
       return;
     }
     onPdfError(null);

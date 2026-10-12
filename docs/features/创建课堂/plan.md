@@ -7,7 +7,7 @@ governed_by: [adr-002, adr-003, adr-004]
 
 # 创建课堂（API + 首页）
 
-目标：用户在首页提交 `requirements`（可选 PDF）后持久化草稿课堂，并导航至生成预览；建课过程不调用模型、不 ingest。后端以 `POST /api/stages` / `GET /api/stages/{id}` 为契约；前端经 `lib/client/stages.ts` 调用 API，**禁止** `sessionStorage` 假会话建课。
+目标：用户在首页提交 `requirements`（可选 PDF）后持久化草稿课堂，并导航至生成预览；建课过程不调用模型、不 ingest。后端以 `POST /api/stages` / `GET /api/stages/{id}` 为契约；前端经 `lib/client/stages` 调用 API，**禁止** `sessionStorage` 假会话建课。
 
 不调用 `POST /api/stages/{id}/ingest`。不新增 ADR。预览页内的大纲流式、入库、播放与讨论不在本计划。
 
@@ -16,12 +16,12 @@ governed_by: [adr-002, adr-003, adr-004]
 | 模块 | 名称 | 状态 | 验收 |
 |:---:|---|:---:|---|
 | **M0** | 后端接口与存储 | 已实现，回归 | CC-1～CC-4（curl） |
-| **M1** | 首页与跳转 | 进行中 | CC-1～CC-4（页面 + API） |
+| **M1** | 首页与跳转 | 已实现 | CC-1～CC-6（页面 + API；见 [tasks](./tasks.md) V-1～V-5） |
 
 ```mermaid
 flowchart LR
   M0 --> M1
-  Page["app/page.tsx"] --> Client["lib/client/stages.ts"]
+  Page["app/page.tsx"] --> Client["lib/client/stages"]
   Client --> API["POST /api/stages"]
   API --> Preview["/generation-preview/id"]
 ```
@@ -98,7 +98,7 @@ flowchart LR
 
 ## M1 — 首页与跳转
 
-`implements: CC-1, CC-2, CC-3, CC-4`
+`implements: CC-1, CC-2, CC-3, CC-4, CC-5, CC-6`
 
 CC 中的「进入生成预览」= 前端在 201 成功后导航至 **`/generation-preview/{id}`**（`id` 来自响应体）。预览页本阶段仅为占位，不实现大纲 SSE 或 ingest。
 
@@ -116,12 +116,12 @@ CC 中的「进入生成预览」= 前端在 201 成功后导航至 **`/generati
 
 | 区域 | 要求 |
 |------|------|
-| 品牌 | `public/mindflow-logo.svg`；中文文案（MVP 不引入 i18n） |
+| 品牌 | `public/mindflow-logo.svg`；中文文案（MVP 精简 `use-i18n`，无多语言切换） |
 | 需求输入 | `textarea`；草稿键 `requirementDraft`（localStorage） |
 | 学习者画像 | 昵称、背景；localStorage 持久化，提交并入 `requirements`；头像不进 API |
 | PDF | 单文件选择；有文件时走 multipart |
 | 顶栏 | 自定义 `ThemeProvider` + `use-theme`；设置入口可占位（toast「模型设置开发中」） |
-| 提交按钮 | 测试阶段：`canSubmit` = 校验通过且非 loading；**暂不**接对话模型门禁 |
+| 提交按钮 | `canSubmit` = 校验通过且非 submitting；提交至跳转前 `submitInFlightRef` 防连点；**暂不**接对话模型门禁 |
 | 页脚 | MindFlow |
 
 ### 与开源首页的差异（勿回退）
@@ -140,7 +140,7 @@ CC 中的「进入生成预览」= 前端在 201 成功后导航至 **`/generati
 
 | 文件 | 改动 |
 |---|---|
-| `lib/client/stages.ts` | `createStage`：JSON / multipart、`apiErrorSchema` / `stageResponseSchema` |
+| `lib/client/stages/` | `createStage`：JSON / multipart、`apiErrorSchema` / `stageResponseSchema`；`pdf/` 为建课 PDF 校验 |
 | `app/page.tsx` | 瘦身为首页；调用 client；删除上表所列开源依赖 |
 | `app/page.tsx` 内 `GreetingBar` | 昵称 + 背景 + 头像（头像仅本地） |
 | `lib/store/user-profile.ts` | Zustand persist 学习者画像 |

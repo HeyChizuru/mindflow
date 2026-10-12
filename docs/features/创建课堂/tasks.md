@@ -7,7 +7,7 @@ governed_by: [adr-004]
 
 # 创建课堂 — 前端实施任务（M1）
 
-对应 [spec](./spec.md)；后端 M0 已就绪，见 [plan](./plan.md)。
+对应 [spec](./spec.md)（`delivery_status: verified`）；后端 M0 已就绪，见 [plan](./plan.md)。阶段 A/B/C 与 V-1～V-5 已完成。
 
 **执行顺序（分三次交付，不要跳步）：**
 
@@ -71,22 +71,22 @@ governed_by: [adr-004]
 
 ### C.1 API 客户端
 
-- [ ] **C-1** [`lib/client/stages.ts`](../../../lib/client/stages.ts)：`createStage(requirements, pdf?)`（JSON / multipart、错误与 `stageResponseSchema`）。
-- [ ] **C-2** 禁止在页面 import `lib/services` / `lib/db`。
+- [x] **C-1** [`lib/client/stages/`](../../../lib/client/stages/)（`create-stage.ts` 等）：`createStage(requirements, pdf?)`（JSON / multipart、错误与 `stageResponseSchema`）。
+- [x] **C-2** 禁止在页面 import `lib/services` / `lib/db`。
 
 ### C.2 提交与校验
 
-- [ ] **C-3** 提交前 `stageRequirementsSchema.safeParse`；PDF 客户端校验（类型 / 非空 / 50MB，中文错误）。
-- [ ] **C-4** 成功：`router.push(\`/generation-preview/${stage.id}\`)`；失败：展示 API `error`；`submitting` 防重复。
-- [ ] **C-5** `canSubmit` = 校验通过且非 submitting（不接模型门禁）。
+- [x] **C-3** 提交前 `stageRequirementsSchema.safeParse`；PDF 客户端校验（类型 / 非空 / 50MB，中文错误）。
+- [x] **C-4** 成功：`router.push(\`/generation-preview/${stage.id}\`)`；失败：展示 API `error`；`submitting` 防重复。
+- [x] **C-5** `canSubmit` = 校验通过且非 submitting（不接模型门禁）。
 
 ### C.3 手工验收（spec「验证」表）
 
-- [ ] **V-1** 无 PDF：≥10 字 → 201 → `/generation-preview/{uuid}`；读回相同 `requirements`。（CC-1, CC-5）
-- [ ] **V-2** 昵称/背景组合读回。（CC-2）
-- [ ] **V-3** 合法 PDF multipart；`hasKnowledgeBase` 为 `false`。（CC-3）
-- [ ] **V-4** 非法输入：可理解错误，无半成品课堂。（CC-4, CC-6）
-- [ ] **V-5** `pnpm lint`。
+- [x] **V-1** 无 PDF：≥10 字 → 201 → `/generation-preview/{uuid}`；读回相同 `requirements`。（CC-1, CC-5）
+- [x] **V-2** 昵称/背景组合读回。（CC-2）
+- [x] **V-3** 合法 PDF multipart；`hasKnowledgeBase` 为 `false`。（CC-3）
+- [x] **V-4** 非法输入：可理解错误，无半成品课堂。（CC-4, CC-6）
+- [x] **V-5** `pnpm lint`。
 
 ---
 
