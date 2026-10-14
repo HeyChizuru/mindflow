@@ -38,7 +38,7 @@ flowchart LR
 | 后台续生成 | draft | planned | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) |
 | 课堂播放与测验 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) |
 | 课堂讨论 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md) |
-| 流式大纲与手改 | accepted | in_progress | 创建课堂 | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
+| 流式大纲与手改 | accepted | in_progress | 创建课堂 | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) · [tasks](./features/流式大纲与手改/tasks.md) |
 | 配置模型 | draft | planned | — | [spec](./features/配置模型/spec.md) |
 | 确认大纲并生成首屏 | draft | planned | 流式大纲与手改 | [spec](./features/确认大纲并生成首屏/spec.md) |
 | 文档入库 | accepted | in_progress | 创建课堂 | [spec](./features/文档入库/spec.md) |

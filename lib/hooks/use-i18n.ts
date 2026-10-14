@@ -2,6 +2,49 @@
 
 /** MVP 中文文案，替代开源 i18n（阶段 A 静态页） */
 const MESSAGES: Record<string, string> = {
+  "common.cancel": "取消",
+  "generation.backToHome": "返回首页",
+  "generation.reviewOutlineTitle": "课程大纲",
+  "generation.reviewOutlineDesc": "可以改标题、描述和要点，也可以调整顺序、增删场景",
+  "generation.reviewOutlineStreamingDesc": "大纲还在生成，暂时不能编辑",
+  "generation.generatingOutlines": "正在生成大纲",
+  "generation.generatingOutlinesDesc": "正在整理本课的场景列表",
+  "generation.generationFailed": "生成失败",
+  "generation.goBackAndRetry": "重试",
+  "generation.aiWorking": "AI 正在工作",
+  "generation.outlineExpandHint": "展开大纲",
+  "generation.sceneTypeQuiz": "测验",
+  "generation.sceneTypeSlide": "幻灯片",
+  "generation.outlineEditorStreamingProgress": "已生成 {count} 个场景",
+  "generation.outlineEditorStreamingWaiting": "正在生成大纲",
+  "generation.outlineEditorSummary": "{count} 个场景",
+  "generation.outlineEditorEyebrow": "大纲",
+  "generation.outlineEditorTitle": "课程大纲",
+  "generation.collapseEditor": "收起",
+  "generation.backToRequirements": "返回首页",
+  "generation.dragSceneHint": "拖拽调整顺序",
+  "generation.sceneTitlePlaceholder": "场景标题",
+  "generation.sceneDescriptionPlaceholder": "这一幕讲什么",
+  "generation.removeKeyPoint": "删除要点",
+  "generation.addKeyPoint": "添加要点",
+  "generation.noOutlines": "还没有场景",
+  "generation.addFirstScene": "添加场景",
+  "generation.deleteScene": "删除场景",
+  "generation.deleteSceneConfirm": "删除这个场景？",
+  "generation.deleteSceneConfirmDesc": "删除后不能恢复",
+  "generation.deleteSceneConfirmAction": "删除",
+  "generation.insertSceneHere": "在这里插入场景",
+  "generation.quizConfigSummary": "{count} 道题",
+  "generation.quizQuestionCount": "题数",
+  "generation.quizDifficulty": "难度",
+  "generation.quizDifficultyEasy": "简单",
+  "generation.quizDifficultyMedium": "中等",
+  "generation.quizDifficultyHard": "困难",
+  "generation.quizType": "题型",
+  "generation.quizTypeSingle": "单选",
+  "generation.quizTypeMultiple": "多选",
+  "generation.quizTypeShortAnswer": "简答",
+  "home.greetingWithName": "你好，{name}",
   "upload.requirementRequired": "请填写课程需求",
   "upload.requirementTooShort": "课程需求至少 10 个字",
   "upload.requirementTooLong": "课程需求不能超过 10000 个字",
@@ -28,12 +71,16 @@ const MESSAGES: Record<string, string> = {
   "profile.invalidFileType": "请上传图片文件",
 };
 
+/** 取界面文案。`params` 替换文案里的 `{name}`、`{count}` 这类占位。 */
 export function useI18n() {
-  const t = (key: string, params?: { name?: string }) => {
-    if (key === "home.greetingWithName" && params?.name) {
-      return `你好，${params.name}`;
+  const t = (key: string, params?: Record<string, string | number>) => {
+    let text = MESSAGES[key] ?? key;
+    if (params) {
+      for (const [name, value] of Object.entries(params)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
     }
-    return MESSAGES[key] ?? key;
+    return text;
   };
   return { t };
 }

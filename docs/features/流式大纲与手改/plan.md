@@ -1,7 +1,7 @@
 ---
 feature_id: 流式大纲与手改
 artifact: plan
-implements: [OL-1, OL-3, OL-4, OL-5]
+implements: [OL-1, OL-2, OL-3, OL-4, OL-5, OL-6]
 governed_by: [adr-003, adr-004, adr-005]
 ---
 
@@ -9,7 +9,9 @@ governed_by: [adr-003, adr-004, adr-005]
 
 目标：在保留 `app/api/generate/scene-outlines-stream/route.ts` 的 SSE 编排前提下，对齐 [spec](./spec.md) 与 [adr-005](../../adr/adr-005.md)。按课堂 id 读取已保存的 `requirements` 流式生成大纲；确认前不写 `stage.outlines` / `languageDirective`。
 
-不改动 `app/api/stages/route.ts`。不新增 ADR。不做 Prisma 迁移。OL-2 手改仅前端，本计划无 PATCH 接口。
+不改动 `app/api/stages/route.ts`。不新增 ADR。不做 Prisma 迁移。OL-2 与 OL-6 手改仅前端，本计划无 PATCH 接口。
+
+后端 M1–M6 已按下文落地。前端见 [tasks](./tasks.md)：先做静态（静态的第一步是删掉开源无关模块），再做联调。
 
 ## 实施顺序总览
 
@@ -208,7 +210,7 @@ buildOutlineGenerationPrompt(input: {
 | OL-5 | 假 id 404；缺对话配置 401；知识库就绪但缺向量配置 401；坏模型输出 SSE `error` |
 | M1 回归 | 打印一次完整 user prompt：无 `{{pdfContent}}` 等残留字面量 |
 
-OL-2：预览页手改，无新 API。
+OL-2、OL-6：预览页手改字段、调整顺序、增删场景，无新 API。
 
 ---
 
@@ -245,12 +247,29 @@ SSE 事件：`languageDirective` | `outline` | `done` | `error`（可选 `retry`
 
 ---
 
-## 与前端分工
+## 前端实施顺序
+
+后端保持不动。前端任务拆在 [tasks](./tasks.md)，分两次交付，不要跳步。
+
+路由只有首页、生成页 `/generation-preview/[id]`、播放页。本单元不生成场景。后续在生成页只生成第 1 个场景（幻灯片内容 + 含 speech 的 actions，不含语音合成）；其余场景由播放页后台续生成。详见 [intent](../../intent.md) 的「页面」。
+
+| 次序 | 阶段 | 做什么 | 验收映射 |
+|:---:|---|---|---|
+| 1 | 静态 · 删减 | 先把开源预览拷进参照目录，再从当前路由删掉无关模块 | 为静态清场 |
+| 2 | 静态 · 页面 | 用本地假数据搭流式卡片和大纲编辑器，不发请求 | OL-2、OL-6 的界面 |
+| 3 | 联调 | 接 `GET /api/stages/{id}` 与大纲 SSE | OL-1、OL-3、OL-4、OL-5；OL-2、OL-6 接上真实列表 |
+
+```mermaid
+flowchart LR
+  Del["静态·删减"] --> Static["静态·页面"]
+  Static --> Wire["联调"]
+```
 
 | 验收 | 后端（M1–M5） | 前端 |
 |---|---|---|
-| OL-1 | SSE + 校验 | 展示流式列表 |
-| OL-2 | — | 本地改 title/description/keyPoints |
-| OL-3 | M3 + M4 + KB 时 Embedding 头 | 带齐请求头 |
-| OL-4 | GET 不泄露大纲 | 刷新后重新触发生成 |
-| OL-5 | 404/401/SSE error | 错误与重试 UI |
+| OL-1 | SSE + 校验 | 联调：逐条展示 |
+| OL-2 | — | 静态即可手改 title / description / keyPoints；联调接到真实列表 |
+| OL-6 | — | 静态即可调序、新增或删除 slide / quiz；联调接到真实列表 |
+| OL-3 | M3 + M4 + KB 时 Embedding 头 | 联调：按知识库是否就绪带齐请求头 |
+| OL-4 | GET 不泄露大纲 | 联调：刷新后重新开流 |
+| OL-5 | 404 / 401 / SSE error | 静态先有错误与重试界面；联调接上真实失败 |
