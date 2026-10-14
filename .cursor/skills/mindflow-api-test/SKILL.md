@@ -53,7 +53,7 @@ $stageId = $stage.id
 带 PDF 时用两个表单字段：`requirements` 是上面对象的 JSON 文件内容，`pdf` 是文件。只存档。
 
 ```powershell
-$req = Write-JsonBodyFile "req.json" '{"requirement":"设计一节关于光合作用的高中生物课，结合上传讲义","userNickname":"小明"}'
+$req = Write-JsonBodyFile "req.json" '{"requirements":{"requirement":"设计一节关于光合作用的高中生物课，结合上传讲义","userNickname":"小明"}}'
 curl.exe -s -o "$tmpdir\create-res.json" -X POST "$base/api/stages" -F "requirements=<$req" -F "pdf=@C:\path\to\file.pdf;type=application/pdf"
 ```
 

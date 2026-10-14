@@ -3,7 +3,7 @@ feature_id: 流式大纲与手改
 artifact: spec
 title: 流式大纲与手改
 spec_status: accepted
-delivery_status: in_progress
+delivery_status: verified
 requires: [创建课堂]
 governed_by: [intent, adr-002, adr-003, adr-004, adr-005]
 related_to: [文档入库, 确认大纲并生成首屏, 配置模型]
@@ -25,7 +25,7 @@ acceptance: [OL-1, OL-2, OL-3, OL-4, OL-5, OL-6]
 
 - 不确认大纲，不把大纲或授课语言指令写入数据库，不生成场景，不进入播放或讨论。
 - 不解析 PDF、不向量化、不把文档全文送入提示词。
-- 不提供模型设置界面。缺对话配置时拒绝本次生成。知识库已就绪但缺向量配置时，同样拒绝本次生成。
+- 不提供模型设置界面，本单元前端也不读 localStorage。联调阶段把对话头写死在客户端；知识库已就绪时再写死向量头。项目跑通后，首页是否已配置模型由 [[配置模型]] 校验，再改为从 localStorage 组装同一套请求头。服务端契约不变：当次请求缺对话配置，或知识库已就绪但缺向量配置时，拒绝本次生成。
 - 手改不再次调用模型。
 - 不登录。不接受 `interactiveMode`。
 - 不做互动或 PBL 场景、联网搜索、AI 图 / 视频、Tool Chat 侧栏改大纲。

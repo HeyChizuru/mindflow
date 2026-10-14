@@ -7,7 +7,7 @@ governed_by: [adr-004, adr-005]
 
 # 流式大纲与手改 — 前端实施任务
 
-对应 [spec](./spec.md)；后端 M1–M6 已就绪，见 [plan](./plan.md)。
+对应 [spec](./spec.md)（`delivery_status: verified`）；后端 M1–M6 已就绪，见 [plan](./plan.md)。阶段 A/B/C 与 V-1～V-5 已完成。
 
 **执行顺序（分两次交付，不要跳步）：**
 
@@ -101,32 +101,32 @@ governed_by: [adr-004, adr-005]
 
 ### C.1 客户端
 
-- [ ] **C-1** `lib/client/stages` 增加按 id 读取：`GET /api/stages/{id}`，用现有 `stageResponseSchema` 校验。失败抛出可读错误（含 404）。
-- [ ] **C-2** `lib/client` 从 localStorage 组装请求头，不新增设置界面。键名：
+- [x] **C-1** `lib/client/stages` 增加按 id 读取：`GET /api/stages/{id}`，用现有 `stageResponseSchema` 校验。失败抛出可读错误（含 404）。
+- [x] **C-2** 测试阶段在 `lib/client` 用常量组装请求头，不读 localStorage，不新增设置界面。无知识库只带对话三头；`hasKnowledgeBase === true` 时再带向量三头。常量只放代码里，不写进文档。项目跑通后，由首页（[[配置模型]]）校验用户是否已配置模型，再改为按下述键名从 localStorage 读取。键名与头名仍按此约定，本单元不实现读取：
   - 对话：`mindflow.llm.chat.apiKey`、`mindflow.llm.chat.baseUrl`、`mindflow.llm.chat.model`
   - 向量：`mindflow.llm.embedding.apiKey`、`mindflow.llm.embedding.baseUrl`、`mindflow.llm.embedding.model`
   - 对应头：`x-mindflow-llm-chat-*`、`x-mindflow-llm-embedding-*`。
-- [ ] **C-3** 大纲流客户端：`POST /api/generate/scene-outlines-stream`，body 仅 `{ stageId }`。解析 SSE：`languageDirective`、`outline`、`done`、`error`，以及可选的 `retry`。`retry` 清空已收集条目。
+- [x] **C-3** 大纲流客户端：`POST /api/generate/scene-outlines-stream`，body 仅 `{ stageId }`。解析 SSE：`languageDirective`、`outline`、`done`、`error`，以及可选的 `retry`。`retry` 清空已收集条目。
 
 `maps: OL-1, OL-3, OL-5`
 
 ### C.2 接到页面
 
-- [ ] **C-4** 用路由上的课堂 id 读课堂。成功后开流，用真实 `outline` 事件替换假数据；每条到达即追加到卡片。`languageDirective` 留在页面状态。
-- [ ] **C-5** `hasKnowledgeBase === false` 时不带向量头。为 `true` 时带齐向量三头。缺对话配置，或知识库已就绪但缺向量配置时，不发 POST，展示可理解错误。
-- [ ] **C-6** 流结束后编辑器可手改（沿用 B-4～B-7）。手改不调模型，不写库。
-- [ ] **C-7** 刷新或再次打开该 id：只恢复课堂需求与资料，丢掉本次大纲、手改和授课语言指令，并重新开流。
-- [ ] **C-8** HTTP 错误与 SSE `error` 停在当前页，展示接口返回的 `error`（不含堆栈或密钥）。重试重新读 localStorage 并再 POST 一次。
+- [x] **C-4** 用路由上的课堂 id 读课堂。成功后开流，用真实 `outline` 事件替换假数据；每条到达即追加到卡片。`languageDirective` 留在页面状态。
+- [x] **C-5** 请求头用 C-2 的常量。`hasKnowledgeBase === false` 时不带向量头。为 `true` 时带齐向量三头。本单元不因「用户尚未配置模型」拦截 POST；该校验留给首页（[[配置模型]]）。
+- [x] **C-6** 流结束后编辑器可手改（沿用 B-4～B-7）。手改不调模型，不写库。
+- [x] **C-7** 刷新或再次打开该 id：只恢复课堂需求与资料，丢掉本次大纲、手改和授课语言指令，并重新开流。
+- [x] **C-8** HTTP 错误与 SSE `error` 停在当前页，展示接口返回的 `error`（不含堆栈或密钥）。重试用同一套写死的请求头再 POST 一次。
 
 `maps: OL-1, OL-2, OL-3, OL-4, OL-5, OL-6`
 
 ### C.3 手工验收
 
-- [ ] **V-1** 无知识库：建课后进入预览，带齐对话头，逐条出现且仅为 slide/quiz。数据库 `outlines` / `language_directive` 不变。（OL-1）
-- [ ] **V-2** 流结束后改标题、描述、要点；调序；新增 slide 与 quiz；删除一条。其余场景的类型与 `quizConfig` 不变。刷新后这些修改消失并重新生成。（OL-2、OL-6、OL-4）
-- [ ] **V-3** 知识库已就绪且带另一套向量头：可以开流。无知识库时不要求向量头。（OL-3）
-- [ ] **V-4** 假 id、缺对话配置、知识库已就绪但缺向量配置、模型无可解析大纲：可理解错误，可重试，不写大纲。（OL-5）
-- [ ] **V-5** `pnpm lint` 通过。
+- [x] **V-1** 无知识库：建课后进入预览，带齐对话头，逐条出现且仅为 slide/quiz。数据库 `outlines` / `language_directive` 不变。（OL-1）
+- [x] **V-2** 流结束后改标题、描述、要点；调序；新增 slide 与 quiz；删除一条。其余场景的类型与 `quizConfig` 不变。刷新后这些修改消失并重新生成。（OL-2、OL-6、OL-4）
+- [x] **V-3** 知识库已就绪且带另一套向量头：可以开流。无知识库时不要求向量头。（OL-3）
+- [x] **V-4** 假 id、模型无可解析大纲：可理解错误，可重试，不写大纲。缺对话配置、知识库已就绪但缺向量配置时，服务端仍拒绝（见 [plan](./plan.md) 的请求头契约）；本单元页面因请求头写死，不覆盖这两条。首页是否已配置模型的校验不在本单元。（OL-5）
+- [x] **V-5** `pnpm lint` 通过。
 
 ---
 
@@ -134,7 +134,7 @@ governed_by: [adr-004, adr-005]
 
 - 确认大纲、写入 `stage.outlines` / `languageDirective`、生成场景（[[确认大纲并生成首屏]]）。
 - 文档解析与入库（[[文档入库]]）。有 PDF 但 `hasKnowledgeBase` 仍为 false 时，本页仍只按已保存需求开流。
-- 模型设置界面（[[配置模型]]）。本单元只读上面的 localStorage 键。
+- 模型设置界面，以及从 localStorage 组装请求头（[[配置模型]]）。本单元测试阶段把请求头写死。项目跑通后，首页校验用户是否已配置模型，再改为读取 `mindflow.llm.chat.*` 与 `mindflow.llm.embedding.*`。
 - 在生成页接上确认大纲，并只生成第 1 个场景的幻灯片内容与含 speech 的 actions（[[确认大纲并生成首屏]]）。不在生成页接 [[后台续生成]]。
 - 播放页按 actions 播放，并在该页后台续生成其余场景（[[课堂播放与测验]]、[[后台续生成]]）。
 - TTS、Agent 人设、联网与 AI 媒体。参照目录里有原文，本产品当前不做。

@@ -1,36 +1,105 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertCircle, ArrowLeft, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OutlinesEditor } from '@/components/generation-preview/outlines-editor';
+import { streamSceneOutlines } from '@/lib/client/generate/stream-scene-outlines';
+import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
+import { getStage } from '@/lib/client/stages';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import type { SceneOutline } from '@/lib/types/outline';
 import { ALL_STEPS } from './types';
 import { StepVisualizer } from './components/visualizers';
-import { useStaticOutlineMock } from './use-static-outline-mock';
+
+const STREAM_FAILED = '大纲生成失败，请重试';
 
 /**
- * 生成页的大纲壳。
- * 只渲染大纲一步的卡片和编辑器；不读 sessionStorage，不请求大纲接口。
+ * 生成页大纲：按路由 id 读取课堂并开 SSE。
+ * 大纲、手改与授课语言指令只留在页面状态，不写 sessionStorage 或数据库。
  */
 export default function GenerationPreviewPage() {
+  const params = useParams<{ id: string }>();
+  const stageId = params.id;
   const router = useRouter();
   const { t } = useI18n();
-  const { outlines, setOutlines, isStreaming } = useStaticOutlineMock();
+  const [outlines, setOutlines] = useState<SceneOutline[]>([]);
+  const [languageDirective, setLanguageDirective] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runId, setRunId] = useState(0);
 
-  const outlineStep = ALL_STEPS[0];
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function run() {
+      await Promise.resolve();
+      if (cancelled) return;
+      setOutlines([]);
+      setLanguageDirective(null);
+      setError(null);
+      setIsStreaming(true);
+
+      try {
+        const stage = await getStage(stageId);
+        if (cancelled) return;
+        await streamSceneOutlines(
+          stage.id,
+          outlineRequestHeaders(stage.hasKnowledgeBase),
+          {
+            onLanguageDirective: (directive) => {
+              if (!cancelled) setLanguageDirective(directive);
+            },
+            onOutline: (outline) => {
+              if (!cancelled) setOutlines((prev) => [...prev, outline]);
+            },
+            onRetry: () => {
+              if (cancelled) return;
+              setOutlines([]);
+              setLanguageDirective(null);
+            },
+            onDone: (result) => {
+              if (cancelled) return;
+              setOutlines(result.outlines);
+              setLanguageDirective(result.languageDirective);
+              setIsStreaming(false);
+            },
+          },
+          controller.signal,
+        );
+      } catch (caught) {
+        if (cancelled) return;
+        setIsStreaming(false);
+        setEditorOpen(false);
+        setError(caught instanceof Error ? caught.message : STREAM_FAILED);
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [stageId, runId]);
 
   const goBackToHome = () => {
     router.push('/');
   };
 
+  const retry = () => {
+    setRunId((current) => current + 1);
+  };
+
   if (editorOpen) {
     return (
-      <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 relative overflow-hidden">
+      <div
+        data-language-directive={languageDirective ?? ''}
+        className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center p-4 relative overflow-hidden"
+      >
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -83,7 +152,10 @@ export default function GenerationPreviewPage() {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden text-center">
+    <div
+      data-language-directive={languageDirective ?? ''}
+      className="min-h-[100dvh] w-full bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden text-center"
+    >
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div
           className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
@@ -134,7 +206,7 @@ export default function GenerationPreviewPage() {
                     </motion.div>
                   ) : (
                     <motion.div
-                      key={outlineStep.id}
+                      key={outlineStepKey(isStreaming)}
                       initial={{ scale: 0.8, opacity: 0, filter: 'blur(10px)' }}
                       animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
                       exit={{ scale: 1.2, opacity: 0, filter: 'blur(10px)' }}
@@ -142,7 +214,7 @@ export default function GenerationPreviewPage() {
                       className="absolute inset-0 flex items-center justify-center"
                     >
                       <StepVisualizer
-                        stepId={outlineStep.id}
+                        stepId={ALL_STEPS[0].id}
                         outlines={outlines}
                         onExpandOutline={() => setEditorOpen(true)}
                       />
@@ -153,10 +225,17 @@ export default function GenerationPreviewPage() {
 
               <div className="space-y-3 max-w-sm mx-auto">
                 <h2 className="text-2xl font-bold tracking-tight">
-                  {error ? t('generation.generationFailed') : t(outlineStep.title)}
+                  {error
+                    ? t('generation.generationFailed')
+                    : isStreaming
+                      ? t(ALL_STEPS[0].title)
+                      : t('generation.reviewOutlineTitle')}
                 </h2>
                 <p className="text-muted-foreground text-base">
-                  {error ?? t(outlineStep.description)}
+                  {error ??
+                    (isStreaming
+                      ? t(ALL_STEPS[0].description)
+                      : t('generation.reviewOutlineDesc'))}
                 </p>
               </div>
             </div>
@@ -169,7 +248,7 @@ export default function GenerationPreviewPage() {
               size="lg"
               variant="outline"
               className="w-full max-w-xs h-12"
-              onClick={() => setError(null)}
+              onClick={retry}
             >
               {t('generation.goBackAndRetry')}
             </Button>
@@ -183,4 +262,8 @@ export default function GenerationPreviewPage() {
       </div>
     </div>
   );
+}
+
+function outlineStepKey(isStreaming: boolean): string {
+  return isStreaming ? 'outline-streaming' : 'outline-ready';
 }

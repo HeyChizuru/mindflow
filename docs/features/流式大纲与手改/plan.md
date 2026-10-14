@@ -257,7 +257,7 @@ SSE 事件：`languageDirective` | `outline` | `done` | `error`（可选 `retry`
 |:---:|---|---|---|
 | 1 | 静态 · 删减 | 先把开源预览拷进参照目录，再从当前路由删掉无关模块 | 为静态清场 |
 | 2 | 静态 · 页面 | 用本地假数据搭流式卡片和大纲编辑器，不发请求 | OL-2、OL-6 的界面 |
-| 3 | 联调 | 接 `GET /api/stages/{id}` 与大纲 SSE | OL-1、OL-3、OL-4、OL-5；OL-2、OL-6 接上真实列表 |
+| 3 | 联调 | 接 `GET /api/stages/{id}` 与大纲 SSE。请求头在 `lib/client` 写死，不读 localStorage；首页模型校验留给 [[配置模型]] | OL-1、OL-3、OL-4、OL-5；OL-2、OL-6 接上真实列表 |
 
 ```mermaid
 flowchart LR
@@ -270,6 +270,6 @@ flowchart LR
 | OL-1 | SSE + 校验 | 联调：逐条展示 |
 | OL-2 | — | 静态即可手改 title / description / keyPoints；联调接到真实列表 |
 | OL-6 | — | 静态即可调序、新增或删除 slide / quiz；联调接到真实列表 |
-| OL-3 | M3 + M4 + KB 时 Embedding 头 | 联调：按知识库是否就绪带齐请求头 |
+| OL-3 | M3 + M4 + KB 时 Embedding 头 | 联调：无知识库只带写死的对话头；知识库就绪时再带写死的向量头 |
 | OL-4 | GET 不泄露大纲 | 联调：刷新后重新开流 |
-| OL-5 | 404 / 401 / SSE error | 静态先有错误与重试界面；联调接上真实失败 |
+| OL-5 | 404 / 401 / SSE error | 静态先有错误与重试界面。联调页面覆盖假 id 与 SSE `error`。缺请求头的 401 仍由服务端保证；本单元因头写死而不在页面上覆盖。首页「是否已配置模型」不在本单元 |
