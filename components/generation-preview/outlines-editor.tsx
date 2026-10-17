@@ -56,6 +56,9 @@ interface OutlinesEditorProps {
   isLoading?: boolean;
   /** SSE is still pumping outlines into this editor — render read-only. */
   isStreaming?: boolean;
+  isReadOnly?: boolean;
+  onConfirm?: () => void;
+  confirmDisabled?: boolean;
   /** Collapse the editor back to the preview surface (small streaming card / outline-ready). */
   onCollapse?: () => void;
 }
@@ -103,6 +106,9 @@ export function OutlinesEditor({
   onBack,
   isLoading = false,
   isStreaming = false,
+  isReadOnly = false,
+  onConfirm,
+  confirmDisabled = false,
   onCollapse,
 }: OutlinesEditorProps) {
   const { t } = useI18n();
@@ -110,7 +116,7 @@ export function OutlinesEditor({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const lastScrollTargetRef = useRef<string | null>(null);
-  const editingDisabled = isLoading || isStreaming;
+  const editingDisabled = isLoading || isStreaming || isReadOnly;
   const lastOutlineId = outlines.length > 0 ? outlines[outlines.length - 1].id : null;
 
   // Auto-scroll to the latest streamed scene so streaming feels alive.
@@ -132,6 +138,7 @@ export function OutlinesEditor({
   };
 
   const updateOutline = (index: number, updates: OutlineFieldPatch) => {
+    if (editingDisabled) return;
     const current = outlines[index];
     if (!current) return;
     const next = outlines.slice();
@@ -172,13 +179,14 @@ export function OutlinesEditor({
   };
 
   const headerSubtitle = useMemo(() => {
+    if (isReadOnly) return t('generation.outlineConfirmedSummary', { count: outlines.length });
     if (isStreaming) {
       return outlines.length > 0
         ? t('generation.outlineEditorStreamingProgress', { count: outlines.length })
         : t('generation.outlineEditorStreamingWaiting');
     }
     return t('generation.outlineEditorSummary', { count: outlines.length });
-  }, [isStreaming, outlines.length, t]);
+  }, [isReadOnly, isStreaming, outlines.length, t]);
 
   return (
     <motion.div
@@ -250,7 +258,7 @@ export function OutlinesEditor({
           />
         ) : (
           <ol className="flex flex-col py-1">
-            {!isStreaming && (
+            {!editingDisabled && (
               <InsertSceneDivider
                 onInsert={(type) => insertOutlineAt(0, type)}
                 disabled={editingDisabled}
@@ -295,7 +303,7 @@ export function OutlinesEditor({
                         setDragOverId(null);
                       }}
                     />
-                    {!isStreaming && (
+                    {!editingDisabled && (
                       <InsertSceneDivider
                         onInsert={(type) => insertOutlineAt(index + 1, type)}
                         disabled={editingDisabled}
@@ -313,6 +321,11 @@ export function OutlinesEditor({
 
       {/* Footer */}
       <div className="relative flex flex-col gap-3 border-t border-border/40 bg-gradient-to-t from-background/95 to-transparent px-6 py-4 md:flex-row md:items-center md:justify-end md:px-10 md:py-5">
+        {isReadOnly && (
+          <p role="status" className="text-sm text-muted-foreground md:mr-auto">
+            {t('generation.outlineConfirmed')}
+          </p>
+        )}
         <div className="flex flex-col-reverse gap-2 md:flex-row md:items-center md:gap-2">
           <Button
             variant="ghost"
@@ -322,6 +335,17 @@ export function OutlinesEditor({
           >
             {t('generation.backToRequirements')}
           </Button>
+          {onConfirm && !isReadOnly && (
+            <Button
+              type="button"
+              onClick={onConfirm}
+              disabled={editingDisabled || confirmDisabled || outlines.length === 0}
+              className="rounded-full px-6"
+            >
+              {isLoading && <Loader2 data-icon="inline-start" className="animate-spin" />}
+              {t(isLoading ? 'generation.confirmingOutline' : 'generation.confirmOutline')}
+            </Button>
+          )}
         </div>
       </div>
     </motion.div>
@@ -436,7 +460,7 @@ function SceneRow({
       <div className="flex items-start gap-2.5">
         {/* Left rail: drag handle + number, baseline-aligned with title */}
         <div className="flex shrink-0 items-center gap-0.5 pt-1">
-          <button
+          {!disabled && <button
             type="button"
             draggable={!disabled}
             title={t('generation.dragSceneHint')}
@@ -474,7 +498,7 @@ function SceneRow({
             )}
           >
             <GripVertical className="size-4" aria-hidden />
-          </button>
+          </button>}
           <span
             className={cn(
               'relative flex size-7 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors',

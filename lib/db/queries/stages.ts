@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import type { ConfirmOutlinesBody } from "@/lib/types/stage-generation";
 
 /**
  * 插入课堂。提示词、昵称、背景分列写入；后两者未填时传 null。
@@ -17,6 +18,24 @@ export async function insertStage(data: {
 /** 按主键取课堂；不存在返回 null */
 export async function getStageById(id: string) {
   return prisma.stage.findUnique({ where: { id } });
+}
+
+export async function confirmStageOutlines(
+  id: string,
+  input: ConfirmOutlinesBody,
+  hasKnowledgeBase: boolean,
+  db: Pick<PrismaClient, "stage"> = prisma,
+) {
+  return db.stage.updateMany({
+    where: { id, outlinesStatus: "draft", outlines: { equals: [] }, hasKnowledgeBase },
+    data: {
+      outlines: input.outlines,
+      languageDirective: input.languageDirective ?? null,
+      outlinesStatus: "confirmed",
+      status: "outline_confirmed",
+      previewPhase: "generating-content",
+    },
+  });
 }
 
 export async function deleteStage(

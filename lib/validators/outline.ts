@@ -36,6 +36,20 @@ export const sceneOutlineSchema = z.discriminatedUnion("type", [
   quizSceneOutlineSchema,
 ]);
 
+export const sceneOutlinesSchema = z.array(sceneOutlineSchema).min(1).superRefine((outlines, context) => {
+  if (new Set(outlines.map((outline) => outline.id)).size !== outlines.length) {
+    context.addIssue({ code: "custom", message: "大纲 ID 不能重复" });
+  }
+  outlines.forEach((outline, index) => {
+    if (outline.order !== index + 1) {
+      context.addIssue({ code: "custom", path: [index, "order"], message: "大纲顺序必须与列表一致" });
+    }
+    if ([outline.id, outline.title, outline.description, ...outline.keyPoints].some((value) => !value.trim())) {
+      context.addIssue({ code: "custom", path: [index], message: "大纲内容不能为空" });
+    }
+  });
+});
+
 /**
  * 校验 LLM 解析出的场景对象。
  * 失败时返回 undefined，不向客户端暴露 Zod 细节。

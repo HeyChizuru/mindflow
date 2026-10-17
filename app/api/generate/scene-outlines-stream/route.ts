@@ -21,11 +21,8 @@ import { requireEmbeddingModel } from "@/lib/knowledge/embedding-config";
 import { retrieve } from "@/lib/knowledge/retrieve";
 import { createLogger } from "@/lib/logger";
 import { buildOutlineGenerationPrompt } from "@/lib/prompts/build-outline-generation-prompt";
-import {
-  getStage,
-  StageNotFoundError,
-  StageValidationError,
-} from "@/lib/services/stages";
+import { StageNotFoundError } from "@/lib/services/stages";
+import { getStageForConfirmation, StageGenerationConflictError } from "@/lib/services/stage-generation";
 import { DEFAULT_LANGUAGE_DIRECTIVE, type SceneOutline } from "@/lib/types/outline";
 import { areSceneOutlinesValid, parseSceneOutline } from "@/lib/validators/outline";
 import { stageIdSchema } from "@/lib/validators/stages";
@@ -133,22 +130,13 @@ export async function POST(req: NextRequest) {
 
     const { stageId } = parsedBody.data;
 
+    const stage = await getStageForConfirmation(stageId);
     const { chat: languageModel, meta } = await requireChatModel(req);
-
-    let stage;
-    try {
-      stage = await getStage(stageId);
-    } catch (error) {
-      if (error instanceof StageNotFoundError) {
-        return NextResponse.json({ error: error.message }, { status: 404 });
-      }
-      if (error instanceof StageValidationError) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-      throw error;
-    }
-
-    const { requirements } = stage;
+    const requirements = {
+      requirement: stage.requirement,
+      userNickname: stage.userNickname ?? undefined,
+      userBio: stage.userBio ?? undefined,
+    };
     requirementSnippet = requirements.requirement.substring(0, 60);
 
     let retrievalExcerpts: string | undefined;
@@ -341,6 +329,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof StageNotFoundError) {
+      return NextResponse.json({ error: "课堂不存在" }, { status: 404 });
+    }
+    if (error instanceof StageGenerationConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (error instanceof LlmSettingsError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }

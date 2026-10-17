@@ -13,7 +13,7 @@ datasource db {
 }
 
 /// 课堂根实体（对齐 OpenMAIC Stage）
-/// 存储课程需求、双层大纲 JSONB、生成状态与播放指针
+/// 存储课程需求、已确认大纲、生成状态与播放指针
 model Stage {
   /// 主键 UUID
   id String @id @default(uuid()) @db.Uuid
@@ -33,7 +33,7 @@ model Stage {
   /// 学习者背景（可选；未填为 null，不写入学习者画像）
   userBio String? @map("user_bio")
 
-  /// 授课语言指令（大纲生成后写入，如「全程使用简体中文授课」）
+  /// 授课语言指令（用户确认大纲时写入）
   languageDirective String? @map("language_directive")
 
   /// 是否有 RAG 知识库（PDF ingest 完成后置 true）
@@ -49,12 +49,12 @@ model Stage {
   /// 取值：preparing | outline-ready | review | generating-content
   previewPhase String @default("preparing") @map("preview_phase")
 
-  /// 执行稿 SceneOutline[]（L1 工作副本）；SSE done 后写入，确认大纲后保留供 scenes.outline_id 映射
+  /// 用户确认时写入的 SceneOutline[]，确认前保持空数组
   outlines Json @default("[]")
 
   /// 执行稿大纲生命周期状态（与 status 不同，仅跟踪 outlines JSONB）
   /// 取值：draft → confirmed → scenes_ready → archived（可选）
-  /// - draft：SSE 完成，用户可编辑
+  /// - draft：尚未确认，大纲仅存在页面
   /// - confirmed：用户确认大纲，开始生成 scenes
   /// - scenes_ready：全部 scene 生成完成，播放不读 outlines
   /// - archived：可选归档，不再需要单页重试
@@ -90,7 +90,28 @@ model Stage {
   /// 课堂下的 RAG 分块（仅 ingest 后写入，按 stage_id 隔离检索）
   chunks Chunk[]
 
+  scenes Scene[]
+
   @@map("stage")
+}
+
+model Scene {
+  id        String   @id @default(uuid()) @db.Uuid
+  stageId   String   @map("stage_id") @db.Uuid
+  outlineId String   @map("outline_id")
+  type      String
+  title     String
+  order     Int
+  content   Json
+  actions   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([stageId, outlineId])
+  @@index([stageId, order])
+  @@map("scenes")
 }
 
 /// PDF 元数据（先存后解析：上传写 filename/storage_path，ingest 后补页数与全文）

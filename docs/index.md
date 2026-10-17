@@ -1,6 +1,5 @@
 # 文档总索引
 
-
 用本页定位文档。功能决策看产品意图和架构决策；某个功能的可验收行为看功能模块；表结构、接口和实现顺序看模块参考。
 
 # 总需求文档
@@ -32,20 +31,18 @@ flowchart LR
   "确认大纲并生成首屏" --> "课堂讨论"
 ```
 
-| feature_id | spec_status | delivery_status | requires | 文件 |
-|---|---|---|---|---|
-| 创建课堂 | accepted | verified | — | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md) · [tasks](./features/创建课堂/tasks.md) |
-| 后台续生成 | draft | planned | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) |
-| 课堂播放与测验 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) |
-| 课堂讨论 | draft | planned | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md) |
-| 流式大纲与手改 | accepted | verified | 创建课堂 | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) · [tasks](./features/流式大纲与手改/tasks.md) |
-| 配置模型 | draft | planned | — | [spec](./features/配置模型/spec.md) |
-| 确认大纲并生成首屏 | draft | planned | 流式大纲与手改 | [spec](./features/确认大纲并生成首屏/spec.md) |
-| 文档入库 | accepted | in_progress | 创建课堂 | [spec](./features/文档入库/spec.md) |
 
-## 笔记
 
-写法参考，不是当前产品承诺。
 
-- [规格驱动开发：Vibe Coding 项目的 MVP 阶段](./notes/sdd-vibe-coding-mvp.md)：规格驱动的写法。
-- [规格图谱实践：单元化、依赖、横向追溯](./notes/spec-graph-practice.md)：功能目录、依赖和验收如何连成图谱。
+| feature_id | spec_status | delivery_status | requires  | 文件                                                                      |
+| ---------- | ----------- | --------------- | --------- | ----------------------------------------------------------------------- |
+| 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
+| 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md)                                        |
+| 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md)                                      |
+| 课堂讨论       | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md)                                         |
+| 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
+| 配置模型       | draft       | planned         | —         | [spec](./features/配置模型/spec.md)                                         |
+| 确认大纲并生成首屏  | accepted    | in_progress     | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) |
+| 文档入库       | accepted    | in_progress     | 创建课堂      | [spec](./features/文档入库/spec.md)                                         |
+
+

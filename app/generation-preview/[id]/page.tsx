@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertCircle, ArrowLeft, Sparkles } from 'lucide-react';
@@ -8,18 +8,16 @@ import { Button } from '@/components/ui/button';
 import { OutlinesEditor } from '@/components/generation-preview/outlines-editor';
 import { streamSceneOutlines } from '@/lib/client/generate/stream-scene-outlines';
 import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
-import { getStage } from '@/lib/client/stages';
+import { confirmOutlines, getGenerationPreview } from '@/lib/client/generate/stage-generation';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { SceneOutline } from '@/lib/types/outline';
+import type { ConfirmOutlinesResponse } from '@/lib/types/stage-generation';
+import { sceneOutlinesSchema } from '@/lib/validators/outline';
 import { ALL_STEPS } from './types';
 import { StepVisualizer } from './components/visualizers';
 
 const STREAM_FAILED = '大纲生成失败，请重试';
 
-/**
- * 生成页大纲：按路由 id 读取课堂并开 SSE。
- * 大纲、手改与授课语言指令只留在页面状态，不写 sessionStorage 或数据库。
- */
 export default function GenerationPreviewPage() {
   const params = useParams<{ id: string }>();
   const stageId = params.id;
@@ -27,10 +25,28 @@ export default function GenerationPreviewPage() {
   const { t } = useI18n();
   const [outlines, setOutlines] = useState<SceneOutline[]>([]);
   const [languageDirective, setLanguageDirective] = useState<string | null>(null);
-  const [isStreaming, setIsStreaming] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isReading, setIsReading] = useState(true);
+  const [streamCompleted, setStreamCompleted] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [hasKnowledgeBase, setHasKnowledgeBase] = useState(false);
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
+  const confirmationController = useRef<AbortController | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runId, setRunId] = useState(0);
+
+  const restoreConfirmed = useCallback((saved: ConfirmOutlinesResponse) => {
+    setOutlines(saved.outlines);
+    setLanguageDirective(saved.languageDirective);
+    setIsConfirmed(true);
+    setIsStreaming(false);
+    setIsReading(false);
+    setEditorOpen(true);
+    setError(null);
+    setConfirmationError(null);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,13 +58,29 @@ export default function GenerationPreviewPage() {
       setOutlines([]);
       setLanguageDirective(null);
       setError(null);
-      setIsStreaming(true);
+      setConfirmationError(null);
+      setIsStreaming(false);
+      setIsReading(true);
+      setStreamCompleted(false);
+      setIsConfirmed(false);
+      setIsConfirming(false);
+      setEditorOpen(false);
+      confirmationController.current = null;
+      let startedStream = false;
 
       try {
-        const stage = await getStage(stageId);
+        const stage = await getGenerationPreview(stageId, controller.signal);
         if (cancelled) return;
+        setHasKnowledgeBase(stage.hasKnowledgeBase);
+        if (stage.outlinesStatus === 'confirmed') {
+          restoreConfirmed(stage);
+          return;
+        }
+        startedStream = true;
+        setIsReading(false);
+        setIsStreaming(true);
         await streamSceneOutlines(
-          stage.id,
+          stage.stageId,
           outlineRequestHeaders(stage.hasKnowledgeBase),
           {
             onLanguageDirective: (directive) => {
@@ -66,6 +98,7 @@ export default function GenerationPreviewPage() {
               if (cancelled) return;
               setOutlines(result.outlines);
               setLanguageDirective(result.languageDirective);
+              setStreamCompleted(true);
               setIsStreaming(false);
             },
           },
@@ -73,6 +106,19 @@ export default function GenerationPreviewPage() {
         );
       } catch (caught) {
         if (cancelled) return;
+        if (startedStream) {
+          try {
+            const saved = await getGenerationPreview(stageId, controller.signal);
+            if (cancelled) return;
+            if (saved.outlinesStatus === 'confirmed') {
+              restoreConfirmed(saved);
+              return;
+            }
+          } catch {
+            if (cancelled) return;
+          }
+        }
+        setIsReading(false);
         setIsStreaming(false);
         setEditorOpen(false);
         setError(caught instanceof Error ? caught.message : STREAM_FAILED);
@@ -83,14 +129,54 @@ export default function GenerationPreviewPage() {
     return () => {
       cancelled = true;
       controller.abort();
+      confirmationController.current?.abort();
     };
-  }, [stageId, runId]);
+  }, [stageId, runId, restoreConfirmed]);
+
+  const canConfirm = streamCompleted && !isReading && !isStreaming && !isConfirmed
+    && sceneOutlinesSchema.safeParse(outlines).success;
+
+  const handleConfirm = async () => {
+    if (!canConfirm || isConfirming || confirmationController.current) return;
+    const controller = new AbortController();
+    confirmationController.current = controller;
+    setIsConfirming(true);
+    setConfirmationError(null);
+    try {
+      const saved = await confirmOutlines(
+        stageId,
+        { outlines, languageDirective, outlineStreamCompleted: true },
+        outlineRequestHeaders(hasKnowledgeBase),
+        controller.signal,
+      );
+      if (!controller.signal.aborted) restoreConfirmed(saved);
+    } catch (caught) {
+      if (controller.signal.aborted) return;
+      try {
+        const saved = await getGenerationPreview(stageId, controller.signal);
+        if (controller.signal.aborted) return;
+        if (saved.outlinesStatus === 'confirmed') {
+          restoreConfirmed(saved);
+          return;
+        }
+      } catch {
+        if (controller.signal.aborted) return;
+      }
+      setConfirmationError(caught instanceof Error ? caught.message : '确认大纲失败，请重试');
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsConfirming(false);
+        confirmationController.current = null;
+      }
+    }
+  };
 
   const goBackToHome = () => {
     router.push('/');
   };
 
   const retry = () => {
+    if (isConfirmed || isConfirming) return;
     setRunId((current) => current + 1);
   };
 
@@ -105,7 +191,7 @@ export default function GenerationPreviewPage() {
           animate={{ opacity: 1, y: 0 }}
           className="absolute top-4 left-4 z-20"
         >
-          <Button variant="ghost" size="sm" onClick={goBackToHome}>
+          <Button variant="ghost" size="sm" onClick={goBackToHome} disabled={isConfirming}>
             <ArrowLeft className="size-4 mr-2" />
             {t('generation.backToHome')}
           </Button>
@@ -123,27 +209,37 @@ export default function GenerationPreviewPage() {
 
             <div className="max-w-2xl space-y-2 text-center mx-auto">
               <h2 className="text-2xl font-bold tracking-tight">
-                {t('generation.reviewOutlineTitle')}
+                {t(isConfirmed ? 'generation.outlineConfirmed' : 'generation.reviewOutlineTitle')}
               </h2>
               <p className="text-muted-foreground text-sm md:text-base">
-                {isStreaming
-                  ? t('generation.reviewOutlineStreamingDesc')
-                  : t('generation.reviewOutlineDesc')}
+                {isConfirmed
+                  ? t('generation.outlineConfirmedDesc')
+                  : isStreaming
+                    ? t('generation.reviewOutlineStreamingDesc')
+                    : t('generation.reviewOutlineDesc')}
               </p>
             </div>
 
-            {error && (
-              <div className="mx-auto max-w-2xl rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
-                {error}
-              </div>
+            {confirmationError && (
+              <p role="alert" className="mx-auto max-w-2xl text-sm text-destructive">
+                {confirmationError}
+              </p>
             )}
 
             <OutlinesEditor
               outlines={outlines}
-              onChange={setOutlines}
+              onChange={(next) => {
+                if (isConfirmed || isConfirming) return;
+                setOutlines(next);
+                setConfirmationError(null);
+              }}
               onBack={goBackToHome}
-              onCollapse={() => setEditorOpen(false)}
+              onCollapse={isConfirmed ? undefined : () => setEditorOpen(false)}
               isStreaming={isStreaming}
+              isLoading={isConfirming}
+              isReadOnly={isConfirmed}
+              onConfirm={handleConfirm}
+              confirmDisabled={!canConfirm}
             />
           </motion.div>
         </div>
@@ -227,15 +323,19 @@ export default function GenerationPreviewPage() {
                 <h2 className="text-2xl font-bold tracking-tight">
                   {error
                     ? t('generation.generationFailed')
+                    : isReading
+                      ? t('generation.readingOutline')
                     : isStreaming
                       ? t(ALL_STEPS[0].title)
                       : t('generation.reviewOutlineTitle')}
                 </h2>
                 <p className="text-muted-foreground text-base">
                   {error ??
-                    (isStreaming
-                      ? t(ALL_STEPS[0].description)
-                      : t('generation.reviewOutlineDesc'))}
+                    (isReading
+                      ? t('generation.readingOutlineDesc')
+                      : isStreaming
+                        ? t(ALL_STEPS[0].description)
+                        : t('generation.reviewOutlineDesc'))}
                 </p>
               </div>
             </div>
@@ -257,6 +357,10 @@ export default function GenerationPreviewPage() {
               <Sparkles className="size-3 animate-pulse" />
               {t('generation.aiWorking')}
             </div>
+          ) : !isReading ? (
+            <Button size="lg" onClick={() => setEditorOpen(true)}>
+              {t('generation.reviewAndConfirmOutline')}
+            </Button>
           ) : null}
         </div>
       </div>
