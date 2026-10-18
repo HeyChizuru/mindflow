@@ -338,6 +338,7 @@ export function OutlinesEditor({
           {onConfirm && !isReadOnly && (
             <Button
               type="button"
+              variant="action"
               onClick={onConfirm}
               disabled={editingDisabled || confirmDisabled || outlines.length === 0}
               className="rounded-full px-6"

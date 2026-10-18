@@ -14,10 +14,17 @@
 
 `[docs/index.md](docs/index.md)` — 文档总索引；增删功能单元或调整依赖关系时请同步更新本页。
 
+## 文档分层
+
+- **spec**：写功能承诺、边界与验收标准。
+- **plan**：写实施路线。小功能可以直接写清实施计划；较大功能只写阶段目标、范围、依赖和交付顺序，不提前展开具体文件、接口、表结构或操作步骤。
+- **task**：写当前阶段的具体改动、实施步骤和验收映射；
+
 # 项目规范(改代码时务必遵守)
 
 - 动手前读该功能 `[spec.md](docs/features/)`（承诺、验收 ID）；有则读同目录 `plan.md` / `tasks.md`，并对照代码与测试，确认文档未过期。
 - 用户诉求、实现与文档不一致时：向用户说明（可标验收 ID 或 plan/tasks 条目）。先改文档，把文档与当前需求对齐（承诺→`spec`，路径与阶段→`plan`/`tasks`），再请用户确认文档是否合格；**用户确认后才能开始实现**。未对齐勿大规模改实现。
+- 什么时候写task：写 spec / plan 时不自动展开 task；进行到对应阶段并且**用户要求时**，才写对应阶段的task。
 
 ---
 
@@ -62,3 +69,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

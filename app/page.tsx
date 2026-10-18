@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowUp,
@@ -263,9 +264,7 @@ function HomePage() {
       >
         {/* ── Logo ── */}
         {/* ── 标志 ── */}
-        <motion.img
-          src="/mindflow-logo.svg"
-          alt="MindFlow"
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{
@@ -274,8 +273,25 @@ function HomePage() {
             stiffness: 200,
             damping: 20,
           }}
-          className="h-12 md:h-16 mb-2 -ml-2 md:-ml-3"
-        />
+          className="h-12 md:h-16 mb-2"
+        >
+          <Image
+            src="/mindflow-logo.svg"
+            alt="MindFlow"
+            width={1355}
+            height={352}
+            loading="eager"
+            className="h-full w-auto dark:hidden"
+          />
+          <Image
+            src="/mindflow-logo-dark.svg"
+            alt="MindFlow"
+            width={1355}
+            height={352}
+            loading="eager"
+            className="hidden h-full w-auto dark:block"
+          />
+        </motion.div>
 
         {/* ── Slogan ── */}
         {/* ── 标语 ── */}
@@ -336,7 +352,7 @@ function HomePage() {
                 className={cn(
                   'shrink-0 h-8 rounded-lg flex items-center justify-center gap-1.5 transition-all px-3',
                   canSubmit
-                    ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm cursor-pointer'
+                    ? 'bg-action text-action-foreground hover:opacity-90 shadow-sm cursor-pointer'
                     : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
                 )}
               >
