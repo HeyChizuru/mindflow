@@ -1,5 +1,6 @@
 import { confirmStageOutlines, getStageById } from "@/lib/db/queries/stages";
 import { StageNotFoundError } from "@/lib/services/stages";
+import { getSceneForOutline } from "@/lib/services/scene-generation";
 import type { ConfirmOutlinesBody, ConfirmOutlinesResponse, GenerationPreviewResponse } from "@/lib/types/stage-generation";
 import { confirmOutlinesBodySchema, confirmOutlinesResponseSchema, generationPreviewResponseSchema } from "@/lib/validators/stage-generation";
 import { stageIdSchema } from "@/lib/validators/stages";
@@ -25,12 +26,17 @@ export async function getGenerationPreview(stageId: string): Promise<GenerationP
   if (stage.outlinesStatus === "draft" && Array.isArray(stage.outlines) && stage.outlines.length === 0) {
     return generationPreviewResponseSchema.parse({ ...base, outlinesStatus: "draft" });
   }
-  return generationPreviewResponseSchema.parse({
-    ...base,
+  if (!["confirmed", "scenes_ready", "archived"].includes(stage.outlinesStatus)) {
+    throw new Error("Invalid saved outline status");
+  }
+  const confirmed = confirmOutlinesResponseSchema.parse({
+    stageId: stage.id,
     outlinesStatus: "confirmed",
     outlines: stage.outlines,
     languageDirective: stage.languageDirective,
   });
+  const firstScene = await getSceneForOutline(stage.id, confirmed.outlines[0]);
+  return generationPreviewResponseSchema.parse({ ...base, ...confirmed, firstScene });
 }
 
 export async function getStageForConfirmation(stageId: string) {

@@ -3,6 +3,33 @@
  */
 
 import type { AgentInfo, SceneGenerationContext } from './pipeline-types';
+import type { StageRequirements } from '@/lib/types/stage';
+
+/** Shared by request preparation and saved-input validation; absent fields stay absent. */
+export function formatUserProfile(input: Pick<StageRequirements, 'userNickname' | 'userBio'>): string | undefined {
+  const nickname = input.userNickname?.trim();
+  const bio = input.userBio?.trim();
+  const text = [nickname ? `Nickname: ${nickname}` : '', bio ? `Background: ${bio}` : '']
+    .filter(Boolean).join('\n');
+  return text || undefined;
+}
+
+/** Common input context without requiring changes to unrelated prompt files. */
+export function buildGenerationInputContext(input: {
+  requirement?: string;
+  userProfile?: string;
+  ctx?: SceneGenerationContext;
+  retrievalExcerpts?: string;
+}): string {
+  return [
+    input.requirement ? `Course requirement:\n${input.requirement}` : '',
+    input.userProfile ? `Learner information:\n${input.userProfile}` : '',
+    input.ctx ? buildCourseContext(input.ctx) : '',
+    input.retrievalExcerpts
+      ? `Reference excerpts (use only supplied facts; do not invent citations):\n${input.retrievalExcerpts}`
+      : '',
+  ].filter(Boolean).join('\n\n');
+}
 
 /** 构建课程上下文字符串，用于注入到 action 提示词中 / Build a course context string for injection into action prompts */
 export function buildCourseContext(ctx?: SceneGenerationContext): string {
@@ -41,8 +68,9 @@ export function buildCourseContext(ctx?: SceneGenerationContext): string {
   if (ctx.previousSpeeches.length > 0) {
     lines.push('');
     lines.push('Previous page speech (for transition reference):');
-    const lastSpeech = ctx.previousSpeeches[ctx.previousSpeeches.length - 1];
-    lines.push(`  "...${lastSpeech.slice(-150)}"`);
+    ctx.previousSpeeches.forEach((speech, index) => {
+      lines.push(`  ${index + 1}. ${speech}`);
+    });
   }
 
   return lines.join('\n');

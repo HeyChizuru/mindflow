@@ -9,25 +9,22 @@
 
 import { nanoid } from 'nanoid';
 import katex from 'katex';
+import type { SceneOutline, SlideSceneOutline, QuizSceneOutline } from '@/lib/types/outline';
 import type {
-  SceneOutline,
   GeneratedSlideContent,
   GeneratedQuizContent,
-} from '@/lib/types/generation';
-import type { TeacherAction } from '@/lib/types/widgets';
-import type { StageStore } from '@/lib/api/stage-api';
-import { createStageAPI } from '@/lib/api/stage-api';
+  SlideElement,
+} from '@/lib/types/scene';
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompts';
 import { parseActionsFromStructuredOutput } from './action-parser';
 import { parseJsonResponse } from './json-repair';
 import {
   buildCourseContext,
+  buildGenerationInputContext,
   buildLanguageText,
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
 } from './prompt-formatters';
-import type { PPTElement, Slide, SlideBackground, SlideTheme } from '@/lib/types/slides';
-import type { QuizQuestion } from '@/lib/types/stage';
 import type {
   Action,
   SpeechAction,
@@ -42,8 +39,13 @@ import type {
   AICallFn,
   GenerationResult,
   GenerationCallbacks,
+  StageStore,
+  TeacherAction,
 } from './pipeline-types';
+import { buildCompleteScene } from './scene-assembly';
+import { generatedContentForOutlineSchema } from '@/lib/validators/scenes';
 import { createLogger } from '@/lib/logger';
+import { SceneGenerationError } from './scene-generation-error';
 const log = createLogger('Generation');
 
 // ── Options interfaces for scene generation functions ──
@@ -52,6 +54,10 @@ const log = createLogger('Generation');
 export interface SceneContentOptions {
   agents?: AgentInfo[];
   languageDirective?: string;
+  requirement?: string;
+  userProfile?: string;
+  ctx?: SceneGenerationContext;
+  retrievalExcerpts?: string;
 }
 
 export interface SceneActionsOptions {
@@ -59,6 +65,7 @@ export interface SceneActionsOptions {
   agents?: AgentInfo[];
   userProfile?: string;
   languageDirective?: string;
+  requirement?: string;
 }
 
 // ==================== Stage 2: Full Scenes (Two-Step) ====================
@@ -85,7 +92,7 @@ export async function generateFullScenes(
   callbacks?: GenerationCallbacks,
   languageDirective?: string,
 ): Promise<GenerationResult<string[]>> {
-  const api = createStageAPI(store);
+  const api = store;
   const totalScenes = sceneOutlines.length;
   let completedCount = 0;
 
@@ -117,7 +124,7 @@ export async function generateFullScenes(
           totalScenes,
         });
 
-        return { success: true, sceneId, index };
+        return { success: sceneId !== null, sceneId, index };
       } catch (error) {
         completedCount++;
         callbacks?.onError?.(`Failed to generate scene ${outline.title}: ${error}`);
@@ -136,7 +143,9 @@ export async function generateFullScenes(
     .sort((a, b) => a.index - b.index)
     .map((r) => r.sceneId);
 
-  return { success: true, data: sceneIds };
+  return sceneIds.length === totalScenes
+    ? { success: true, data: sceneIds }
+    : { success: false, data: sceneIds, error: 'Some scenes could not be generated or saved' };
 }
 
 /**
@@ -150,7 +159,7 @@ export async function generateFullScenes(
  */
 async function generateSingleScene(
   outline: SceneOutline,
-  api: ReturnType<typeof createStageAPI>,
+  api: StageStore,
   aiCall: AICallFn,
   languageDirective?: string,
 ): Promise<string | null> {
@@ -187,10 +196,9 @@ export async function generateSceneContent(
   | GeneratedQuizContent
   | null
 > {
-  const {
-    agents,
-    languageDirective,
-  } = options;
+  const { agents } = options;
+  const languageDirective = buildLanguageText(options.languageDirective, outline.languageNote);
+  const inputContext = buildGenerationInputContext(options);
 
   switch (outline.type) {
     case 'slide':
@@ -199,9 +207,10 @@ export async function generateSceneContent(
         aiCall,
         agents,
         languageDirective,
+        inputContext,
       );
     case 'quiz':
-      return generateQuizContent(outline, aiCall, languageDirective);
+      return generateQuizContent(outline, aiCall, languageDirective, inputContext);
     default:
       return null;
   }
@@ -343,6 +352,7 @@ function processLatexElements(
         return {
           ...el,
           html,
+          color: typeof el.color === 'string' && el.color.trim() ? el.color : '#333333',
           fixedRatio: true,
         };
       } catch (err) {
@@ -358,10 +368,11 @@ function processLatexElements(
  * 生成幻灯片内容
  */
 async function generateSlideContent(
-  outline: SceneOutline,
+  outline: SlideSceneOutline,
   aiCall: AICallFn,
   agents?: AgentInfo[],
   languageDirective?: string,
+  inputContext = '',
 ): Promise<GeneratedSlideContent | null> {
 
 
@@ -381,60 +392,54 @@ async function generateSlideContent(
     canvas_height: canvasHeight,
     teacherContext,
     languageDirective: languageDirective || '',
+    inputContext,
   });
 
   if (!prompts) {
     return null;
   }
 
-  log.debug(`Generating slide content for: ${outline.title}`);
+  log.info(`Generating slide content for: ${outline.title}`);
 
   const response = await aiCall(prompts.system, prompts.user);
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
-  if (!generatedData || !generatedData.elements || !Array.isArray(generatedData.elements)) {
+  if (!generatedData || !Array.isArray(generatedData.elements)
+    || generatedData.elements.some((element) => !element || typeof element !== 'object' || Array.isArray(element))) {
     log.error(`Failed to parse AI response for: ${outline.title}`);
     return null;
   }
 
-  log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
+  log.info(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
 
   const fixedElements = fixElementDefaults(generatedData.elements);
-  log.debug(`After element fixing: ${fixedElements.length} elements`);
+  log.info(`After element fixing: ${fixedElements.length} elements`);
 
   // Process LaTeX elements: render latex string → HTML via KaTeX
 // 处理 LaTeX 元素：通过 KaTeX 将 LaTeX 字符串渲染为 HTML
   const latexProcessedElements = processLatexElements(fixedElements);
-  log.debug(`After LaTeX processing: ${latexProcessedElements.length} elements`);
+  log.info(`After LaTeX processing: ${latexProcessedElements.length} elements`);
 
 
   // Process elements, assign unique IDs
 // 处理元素，分配唯一 ID
-  const processedElements: PPTElement[] = latexProcessedElements.map((el) => ({
+  if (latexProcessedElements.length !== fixedElements.length) return null;
+  const processedElements = latexProcessedElements.map((el) => ({
     ...el,
-    id: `${el.type}_${nanoid(8)}`,
-    rotate: 0,
-  })) as PPTElement[];
+    id: el.id == null || (typeof el.id === 'string' && !el.id.trim()) ? `${el.type}_${nanoid(8)}` : el.id,
+    rotate: el.rotate ?? 0,
+  }));
 
   // Process background
 // 处理背景
-  let background: SlideBackground | undefined;
-  if (generatedData.background) {
-    if (generatedData.background.type === 'solid' && generatedData.background.color) {
-      background = { type: 'solid', color: generatedData.background.color };
-    } else if (generatedData.background.type === 'gradient' && generatedData.background.gradient) {
-      background = {
-        type: 'gradient',
-        gradient: generatedData.background.gradient,
-      };
-    }
-  }
+  const background = generatedData.background;
 
-  return {
+  const result = generatedContentForOutlineSchema(outline).safeParse({
     elements: processedElements,
     background,
     remark: generatedData.remark || outline.description,
-  };
+  });
+  return result.success ? result.data : null;
 }
 
 /**
@@ -442,15 +447,12 @@ async function generateSlideContent(
  * 生成测验内容
  */
 async function generateQuizContent(
-  outline: SceneOutline,
+  outline: QuizSceneOutline,
   aiCall: AICallFn,
   languageDirective?: string,
+  inputContext = '',
 ): Promise<GeneratedQuizContent | null> {
-  const quizConfig = outline.quizConfig || {
-    questionCount: 3,
-    difficulty: 'medium',
-    questionTypes: ['single'],
-  };
+  const quizConfig = outline.quizConfig;
 
   const prompts = buildPrompt(PROMPT_IDS.QUIZ_CONTENT, {
     title: outline.title,
@@ -460,37 +462,49 @@ async function generateQuizContent(
     difficulty: quizConfig.difficulty,
     questionTypes: quizConfig.questionTypes.join(', '),
     languageDirective: languageDirective || '',
+    inputContext,
   });
 
   if (!prompts) {
     return null;
   }
 
-  log.debug(`Generating quiz content for: ${outline.title}`);
+  log.info(`Generating quiz content for: ${outline.title}`);
   const response = await aiCall(prompts.system, prompts.user);
-  const generatedQuestions = parseJsonResponse<QuizQuestion[]>(response);
+  const generatedQuestions = parseJsonResponse<unknown[]>(response);
 
   if (!generatedQuestions || !Array.isArray(generatedQuestions)) {
     log.error(`Failed to parse AI response for: ${outline.title}`);
     return null;
   }
 
-  log.debug(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
+  log.info(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
 
   // Ensure each question has an ID and normalize options format
 // 确保每个问题有 ID 并规范化选项格式
-  const questions: QuizQuestion[] = generatedQuestions.map((q) => {
+  const questions = generatedQuestions.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+    const q = raw as Record<string, unknown>;
     const isText = q.type === 'short_answer';
-    return {
+    const question: Record<string, unknown> = {
       ...q,
-      id: q.id || `q_${nanoid(8)}`,
-      options: isText ? undefined : normalizeQuizOptions(q.options),
-      answer: isText ? undefined : normalizeQuizAnswer(q as unknown as Record<string, unknown>),
-      hasAnswer: isText ? false : true,
+      id: q.id == null || (typeof q.id === 'string' && !q.id.trim()) ? `q_${nanoid(8)}` : q.id,
+    };
+    for (const key of ['correctAnswer', 'correct_answer', 'hasAnswer']) delete question[key];
+    if (isText) {
+      for (const key of ['options', 'answer']) delete question[key];
+      return question;
+    }
+    const options = normalizeQuizOptions(q.options);
+    return {
+      ...question,
+      options,
+      answer: normalizeQuizAnswer(q, options),
     };
   });
 
-  return { questions };
+  const result = generatedContentForOutlineSchema(outline).safeParse({ questions });
+  return result.success ? result.data : null;
 }
 
 /**
@@ -502,27 +516,31 @@ async function generateQuizContent(
  * 本函数规范化为 QuizOption[] 格式：{ value: "A", label: "选项A" }
  */
 function normalizeQuizOptions(
-  options: unknown[] | undefined,
+  options: unknown,
 ): { value: string; label: string }[] | undefined {
-  if (!options || !Array.isArray(options)) return undefined;
+  if (!Array.isArray(options)) return undefined;
 
-  return options.map((opt, index) => {
+  const result: { value: string; label: string }[] = [];
+  for (const [index, opt] of options.entries()) {
     const letter = String.fromCharCode(65 + index); // A, B, C, D... / A、B、C、D...
 
     if (typeof opt === 'string') {
-      return { value: letter, label: opt };
+      result.push({ value: letter, label: opt });
+      continue;
     }
 
-    if (typeof opt === 'object' && opt !== null) {
+    if (typeof opt === 'object' && opt !== null && !Array.isArray(opt)) {
       const obj = opt as Record<string, unknown>;
-      return {
-        value: typeof obj.value === 'string' ? obj.value : letter,
-        label: typeof obj.label === 'string' ? obj.label : String(obj.value || obj.text || letter),
-      };
+      const value = obj.value === undefined ? letter : obj.value;
+      const label = obj.label ?? obj.text;
+      if (typeof value !== 'string' || typeof label !== 'string') return undefined;
+      result.push({ value, label });
+      continue;
     }
 
-    return { value: letter, label: String(opt) };
-  });
+    return undefined;
+  }
+  return result;
 }
 
 /**
@@ -533,19 +551,30 @@ function normalizeQuizOptions(
  * This normalizes to string[] format matching option values.
  * 本函数规范化为匹配选项值的 string[] 格式。
  */
-function normalizeQuizAnswer(question: Record<string, unknown>): string[] | undefined {
+function normalizeQuizAnswer(
+  question: Record<string, unknown>,
+  options: { value: string; label: string }[] | undefined,
+): string[] | undefined {
   // AI might use "correctAnswer", "answer", or "correct_answer"
 // AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段
   const raw =
     question.answer ??
     question.correctAnswer ??
     (question as Record<string, unknown>).correct_answer;
-  if (!raw) return undefined;
-
-  if (Array.isArray(raw)) {
-    return raw.map(String);
+  if (!options) return undefined;
+  const answers = Array.isArray(raw) ? raw : [raw];
+  const values: string[] = [];
+  for (const answer of answers) {
+    if (typeof answer !== 'string' || !answer.trim()) return undefined;
+    if (options.some((option) => option.value === answer)) {
+      values.push(answer);
+      continue;
+    }
+    const matches = options.filter((option) => option.label === answer);
+    if (matches.length !== 1) return undefined;
+    values.push(matches[0].value);
   }
-  return [String(raw)];
+  return values;
 }
 
 /**
@@ -560,7 +589,9 @@ export async function generateSceneActions(
   aiCall: AICallFn,
   options: SceneActionsOptions = {},
 ): Promise<Action[]> {
-  const { ctx, agents, userProfile, languageDirective } = options;
+  const { ctx, agents, userProfile } = options;
+  const languageDirective = buildLanguageText(options.languageDirective, outline.languageNote);
+  const inputContext = buildGenerationInputContext({ requirement: options.requirement, userProfile });
   const agentsText = formatAgentsForPrompt(agents);
 
   if (outline.type === 'slide' && 'elements' in content) {
@@ -580,19 +611,13 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultSlideActions(outline, content.elements);
+      throw new SceneGenerationError('加载幻灯片动作提示词失败，请重试', 502);
     }
 
-    const response = await aiCall(prompts.system, prompts.user);
+    const response = await aiCall(prompts.system, [inputContext, prompts.user].filter(Boolean).join('\n\n'));
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
-    if (actions.length > 0) {
-      // Validate and fill in Action IDs
-// 校验并填充动作 ID
-      return processActions(actions, content.elements, agents);
-    }
-
-    return generateDefaultSlideActions(outline, content.elements);
+    return processActions(actions, content.elements, agents);
   }
 
   if (outline.type === 'quiz' && 'questions' in content) {
@@ -611,27 +636,23 @@ export async function generateSceneActions(
     });
 
     if (!prompts) {
-      return generateDefaultQuizActions(outline);
+      throw new SceneGenerationError('加载测验动作提示词失败，请重试', 502);
     }
 
-    const response = await aiCall(prompts.system, prompts.user);
+    const response = await aiCall(prompts.system, [inputContext, prompts.user].filter(Boolean).join('\n\n'));
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
-    if (actions.length > 0) {
-      return processActions(actions, [], agents);
-    }
-
-    return generateDefaultQuizActions(outline);
+    return processActions(actions, content.questions, agents);
   }
 
-  return [];
+  throw new SceneGenerationError('动作生成内容与场景类型不一致，请重试', 502);
 }
 
 /**
  * Format element list for AI to select elementId
  * 格式化元素列表供 AI 选择 elementId
  */
-function formatElementsForPrompt(elements: PPTElement[]): string {
+function formatElementsForPrompt(elements: SlideElement[]): string {
   return elements
     .map((el) => {
       let summary = '';
@@ -660,13 +681,13 @@ function formatElementsForPrompt(elements: PPTElement[]): string {
  * Format question list for AI reference
  * 格式化问题列表供 AI 参考
  */
-function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
+function formatQuestionsForPrompt(questions: GeneratedQuizContent['questions']): string {
   return questions
     .map((q, i) => {
-      const optionsText = q.options
+      const optionsText = 'options' in q
         ? `Options: ${q.options.map((o) => `${o.value}. ${o.label}`).join(', ')}`
         : '';
-      return `Q${i + 1} (${q.type}): ${q.question}\n${optionsText}`;
+      return `Q${i + 1} id: "${q.id}" (${q.type}): ${q.question}\n${optionsText}\nAnalysis: ${q.analysis}\nPoints: ${q.points}`;
     })
     .join('\n\n');
 }
@@ -693,7 +714,7 @@ function formatQuestionsForPrompt(questions: QuizQuestion[]): string {
  * - highlight/setState/annotation without content → single widget action
  * - 不带内容的 highlight/setState/annotation → 单个组件动作
  */
-function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action[] {
+export function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action[] {
   const actions: Action[] = [];
 
   for (const ta of teacherActions) {
@@ -723,7 +744,6 @@ function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action
           ...base,
           type: 'widget_highlight',
           target: ta.target || '',
-          content: undefined, // No speech in widget action / 组件动作不包含语音
         } as WidgetHighlightAction);
         // Add speech action for narration (if content exists)
         // 添加旁白语音动作（如果有内容）
@@ -744,7 +764,6 @@ function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action
           ...base,
           type: 'widget_setState',
           state: ta.state || {},
-          content: undefined,
         } as WidgetSetStateAction);
         // Add speech action for narration
         // 添加旁白语音动作
@@ -763,7 +782,6 @@ function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action
           ...base,
           type: 'widget_annotation',
           target: ta.target || '',
-          content: undefined,
         } as WidgetAnnotationAction);
         if (ta.content) {
           actions.push({
@@ -793,7 +811,7 @@ function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action
  * Process and validate Actions
  * 处理和校验动作
  */
-function processActions(actions: Action[], elements: PPTElement[], agents?: AgentInfo[]): Action[] {
+function processActions(actions: Action[], elements: { id: string }[], agents?: AgentInfo[]): Action[] {
   const elementIds = new Set(elements.map((el) => el.id));
   const agentIds = new Set(agents?.map((a) => a.id) || []);
   const studentAgents = agents?.filter((a) => a.role === 'student') || [];
@@ -802,25 +820,20 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
   return actions.map((action) => {
     // Ensure each action has an ID
 // 确保每个动作有 ID
-    const processedAction: Action = {
+    const processedAction: Action & { agentId?: string } = {
       ...action,
       id: action.id || `action_${nanoid(8)}`,
     };
 
     // Validate spotlight elementId
 // 校验聚焦元素的 elementId
-    if (processedAction.type === 'spotlight') {
-      const spotlightAction = processedAction;
-      if (!spotlightAction.elementId || !elementIds.has(spotlightAction.elementId)) {
-        // If elementId is invalid, try selecting the first element
-// 如果 elementId 无效，尝试选择第一个元素
-        if (elements.length > 0) {
-          spotlightAction.elementId = elements[0].id;
-          log.warn(
-            `Invalid elementId, falling back to first element: ${spotlightAction.elementId}`,
-          );
-        }
-      }
+    if ((processedAction.type === 'spotlight' || processedAction.type === 'laser')
+      && !elementIds.has(processedAction.elementId)) {
+      throw new SceneGenerationError('动作指向不存在的本页元素，请重试', 502);
+    }
+    if ((processedAction.type === 'widget_highlight' || processedAction.type === 'widget_annotation')
+      && !elementIds.has(processedAction.target)) {
+      throw new SceneGenerationError('组件动作指向不存在的本页目标，请重试', 502);
     }
 
     // Validate/fill discussion agentId
@@ -848,115 +861,17 @@ function processActions(actions: Action[], elements: PPTElement[], agents?: Agen
 }
 
 /**
- * Generate default slide Actions (fallback)
- * 生成默认幻灯片动作（回退）
- */
-function generateDefaultSlideActions(outline: SceneOutline, elements: PPTElement[]): Action[] {
-  const actions: Action[] = [];
-
-  // Add spotlight for text elements
-// 为文本元素添加聚焦动作
-  const textElements = elements.filter((el) => el.type === 'text');
-  if (textElements.length > 0) {
-    actions.push({
-      id: `action_${nanoid(8)}`,
-      type: 'spotlight',
-      title: '聚焦重点',
-      elementId: textElements[0].id,
-    });
-  }
-
-  // Add opening speech based on key points
-// 根据要点添加开场讲解语音
-  const speechText = outline.keyPoints?.length
-    ? outline.keyPoints.join('。') + '。'
-    : outline.description || outline.title;
-  actions.push({
-    id: `action_${nanoid(8)}`,
-    type: 'speech',
-    title: '场景讲解',
-    text: speechText,
-  });
-
-  return actions;
-}
-
-/**
- * Generate default quiz Actions (fallback)
- * 生成默认测验动作（回退）
- */
-function generateDefaultQuizActions(_outline: SceneOutline): Action[] {
-  return [
-    {
-      id: `action_${nanoid(8)}`,
-      type: 'speech',
-      title: '测验引导',
-      text: '现在让我们来做一个小测验，检验一下学习成果。',
-    },
-  ];
-}
-
-/**
  * Create a complete scene with Actions
  * 创建带动作的完整场景
  */
-export function createSceneWithActions(
+export async function createSceneWithActions(
   outline: SceneOutline,
-  content:
-    | GeneratedSlideContent
-    | GeneratedQuizContent,
+  content: GeneratedSlideContent | GeneratedQuizContent,
   actions: Action[],
-  api: ReturnType<typeof createStageAPI>,
-): string | null {
-  if (outline.type === 'slide' && 'elements' in content) {
-    // Build complete Slide object
-// 构建完整的 Slide 对象
-    const defaultTheme: SlideTheme = {
-      backgroundColor: '#ffffff',
-      themeColors: ['#5b9bd5', '#ed7d31', '#a5a5a5', '#ffc000', '#4472c4'],
-      fontColor: '#333333',
-      fontName: 'Microsoft YaHei',
-      outline: { color: '#d14424', width: 2, style: 'solid' },
-      shadow: { h: 0, v: 0, blur: 10, color: '#000000' },
-    };
-
-    const slide: Slide = {
-      id: nanoid(),
-      viewportSize: 1000,
-      viewportRatio: 0.5625,
-      theme: defaultTheme,
-      elements: content.elements,
-      background: content.background,
-    };
-
-    const sceneResult = api.scene.create({
-      type: 'slide',
-      title: outline.title,
-      order: outline.order,
-      content: {
-        type: 'slide',
-        canvas: slide,
-      },
-      actions,
-    });
-
-    return sceneResult.success ? (sceneResult.data ?? null) : null;
-  }
-
-  if (outline.type === 'quiz' && 'questions' in content) {
-    const sceneResult = api.scene.create({
-      type: 'quiz',
-      title: outline.title,
-      order: outline.order,
-      content: {
-        type: 'quiz',
-        questions: content.questions,
-      },
-      actions,
-    });
-
-    return sceneResult.success ? (sceneResult.data ?? null) : null;
-  }
-
-  return null;
+  api: StageStore,
+): Promise<string | null> {
+  const scene = buildCompleteScene(outline, content, actions, api.stageId);
+  if (!scene) return null;
+  const result = await api.scene.create(scene);
+  return result.success ? (result.data ?? null) : null;
 }

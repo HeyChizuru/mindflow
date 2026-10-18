@@ -12,7 +12,7 @@
   - fixedRatio: Whether to maintain aspect ratio
 
 - **image**: Image element
-  - src: Image ID (e.g., `img_1`) or actual URL
+  - src: An actual URL supplied in the input; do not invent image IDs or URLs
   - fixedRatio: Whether to maintain aspect ratio
 
 - **chart**: Chart element

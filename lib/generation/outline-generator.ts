@@ -3,10 +3,8 @@
  */
 
 import { nanoid } from 'nanoid';
-import type {
-  UserRequirements,
-  SceneOutline,
-} from '@/lib/types/generation';
+import type { SceneOutline } from '@/lib/types/outline';
+import type { UserRequirements } from './pipeline-types';
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompts';
 import { parseJsonResponse } from './json-repair';
 import type { AICallFn, GenerationResult, GenerationCallbacks } from './pipeline-types';

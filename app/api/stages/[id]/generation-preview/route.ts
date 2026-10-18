@@ -20,6 +20,6 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 404, headers });
     }
     console.error("[GET /api/stages/[id]/generation-preview] failed");
-    return NextResponse.json({ error: "读取大纲失败，请重试" }, { status: 500, headers });
+    return NextResponse.json({ error: "读取课堂大纲与首屏失败，请重试" }, { status: 500, headers });
   }
 }

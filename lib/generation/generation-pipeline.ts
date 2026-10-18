@@ -13,11 +13,18 @@ export type {
   GenerationResult,
   GenerationCallbacks,
   AICallFn,
+  UserRequirements,
+  GenerationProgress,
+  GenerationSession,
+  StageStore,
+  TeacherAction,
 } from './pipeline-types';
 
 // Prompt formatters
 export {
   buildCourseContext,
+  buildGenerationInputContext,
+  formatUserProfile,
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
   buildLanguageText,
@@ -35,6 +42,7 @@ export {
   generateSceneContent,
   generateSceneActions,
   createSceneWithActions,
+  convertTeacherActionsToActions,
 } from './scene-generator';
 export type { SceneContentOptions, SceneActionsOptions } from './scene-generator';
 

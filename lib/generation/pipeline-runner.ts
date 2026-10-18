@@ -4,8 +4,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import type { UserRequirements, GenerationSession } from '@/lib/types/generation';
-import type { StageStore } from '@/lib/api/stage-api';
+import type { UserRequirements, GenerationSession, StageStore } from './pipeline-types';
 import { generateSceneOutlinesFromRequirements } from './outline-generator';
 import { generateFullScenes } from './scene-generator';
 import type { AICallFn, GenerationResult, GenerationCallbacks } from './pipeline-types';

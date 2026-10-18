@@ -6,6 +6,33 @@ import { jsonrepair } from 'jsonrepair';
 import { createLogger } from '@/lib/logger';
 const log = createLogger('Generation');
 
+/** Reject open containers/strings before syntax repair can complete a fragment. */
+function hasCompleteJsonStructure(input: string): boolean {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const char of input.trim()) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (inString && char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{' || char === '[') stack.push(char);
+    if (char === '}' || char === ']') {
+      if (stack.pop() !== (char === '}' ? '{' : '[')) return false;
+    }
+  }
+  return stack.length === 0 && !inString && !escaped;
+}
+
 function repairQuotedPropertyFragments(jsonStr: string): string {
   return jsonStr.replace(
     /([,{]\s*)"([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(true|false|null|[+-]?\d+(?:\.\d+)?)"(?=\s*[,}])/g,
@@ -33,6 +60,12 @@ function logJsonParseError(stage: string, jsonStr: string, error: unknown): void
 }
 
 export function parseJsonResponse<T>(response: string): T | null {
+  // Check the entire response before extracting any complete-looking inner block.
+  // Otherwise a closed object followed by a truncated remainder could be accepted.
+  if (!hasCompleteJsonStructure(response)) {
+    log.warn('Incomplete JSON response; refusing to extract an inner fragment');
+    return null;
+  }
   // Strategy 1: Try to extract JSON from markdown code blocks (may have multiple)
   const codeBlockMatches = response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g);
   for (const match of codeBlockMatches) {
@@ -41,7 +74,7 @@ export function parseJsonResponse<T>(response: string): T | null {
     if (extracted.startsWith('{') || extracted.startsWith('[')) {
       const result = tryParseJson<T>(extracted);
       if (result !== null) {
-        log.debug('Successfully parsed JSON from code block');
+        log.info('Successfully parsed JSON from code block');
         return result;
       }
     }
@@ -101,7 +134,7 @@ export function parseJsonResponse<T>(response: string): T | null {
       const jsonStr = response.substring(startIndex, endIndex + 1);
       const result = tryParseJson<T>(jsonStr);
       if (result !== null) {
-        log.debug('Successfully parsed JSON from response body');
+        log.info('Successfully parsed JSON from response body');
         return result;
       }
     }
@@ -110,7 +143,7 @@ export function parseJsonResponse<T>(response: string): T | null {
   // Strategy 3: Last resort - try the whole response
   const result = tryParseJson<T>(response.trim());
   if (result !== null) {
-    log.debug('Successfully parsed raw response as JSON');
+    log.info('Successfully parsed raw response as JSON');
     return result;
   }
 
@@ -134,6 +167,11 @@ export function tryParseJson<T>(jsonStr: string): T | null {
   } catch (error) {
     logJsonParseError('Attempt 1', jsonStr, error);
     // Continue to fix attempts
+  }
+
+  if (!hasCompleteJsonStructure(jsonStr)) {
+    log.warn('Incomplete JSON response; refusing to recover a partial result');
+    return null;
   }
 
   // Attempt 2: Fix common JSON issues from AI responses
@@ -170,24 +208,6 @@ export function tryParseJson<T>(jsonStr: string): T | null {
       }
       return match;
     });
-
-    // Fix 3: Try to fix truncated JSON arrays/objects
-    const trimmed = fixed.trim();
-    if (trimmed.startsWith('[') && !trimmed.endsWith(']')) {
-      const lastCompleteObj = fixed.lastIndexOf('}');
-      if (lastCompleteObj > 0) {
-        fixed = fixed.substring(0, lastCompleteObj + 1) + ']';
-        log.warn('Fixed truncated JSON array');
-      }
-    } else if (trimmed.startsWith('{') && !trimmed.endsWith('}')) {
-      // Try to close incomplete object
-      const openBraces = (fixed.match(/{/g) || []).length;
-      const closeBraces = (fixed.match(/}/g) || []).length;
-      if (openBraces > closeBraces) {
-        fixed += '}'.repeat(openBraces - closeBraces);
-        log.warn('Fixed truncated JSON object');
-      }
-    }
 
     return JSON.parse(fixed) as T;
   } catch (error) {

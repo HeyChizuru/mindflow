@@ -1,4 +1,6 @@
 import type { CreateSceneInput, Scene, SlideElement } from "@/lib/types/scene";
+import type { GeneratedQuizContent, GeneratedSlideContent } from "@/lib/types/scene";
+import type { SceneOutline, SlideSceneOutline, QuizSceneOutline } from "@/lib/types/outline";
 import { actionsSchema } from "@/lib/validators/actions";
 import { z } from "zod";
 
@@ -120,6 +122,32 @@ export const generatedQuizContentSchema = z.object({
     "题目 ID 不能重复",
   ),
 }).catchall(z.json());
+
+/** Validate generation output against the caller's confirmed target. No media sources are supplied by these requests. */
+export function generatedContentForOutlineSchema(outline: SlideSceneOutline): z.ZodType<GeneratedSlideContent>;
+export function generatedContentForOutlineSchema(outline: QuizSceneOutline): z.ZodType<GeneratedQuizContent>;
+export function generatedContentForOutlineSchema(outline: SceneOutline): z.ZodType<GeneratedSlideContent | GeneratedQuizContent>;
+export function generatedContentForOutlineSchema(outline: SceneOutline): z.ZodType<GeneratedSlideContent | GeneratedQuizContent> {
+  if (outline.type === "slide") {
+    return generatedSlideContentSchema.superRefine((content, context) => {
+      content.elements.forEach((element, index) => {
+        if (element.type === "image" || element.type === "video") {
+          context.addIssue({ code: "custom", path: ["elements", index], message: "生成请求未提供可用媒体来源" });
+        }
+      });
+    });
+  }
+  return generatedQuizContentSchema.superRefine((content, context) => {
+    if (content.questions.length !== outline.quizConfig.questionCount) {
+      context.addIssue({ code: "custom", path: ["questions"], message: "题目数量与定稿配置不一致" });
+    }
+    content.questions.forEach((question, index) => {
+      if (!outline.quizConfig.questionTypes.includes(question.type)) {
+        context.addIssue({ code: "custom", path: ["questions", index, "type"], message: "题型不在定稿允许范围内" });
+      }
+    });
+  });
+}
 
 export const sceneContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("slide"), canvas: slideCanvasSchema }).catchall(z.json()),
