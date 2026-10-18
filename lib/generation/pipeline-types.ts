@@ -68,5 +68,4 @@ export interface GenerationCallbacks {
 export type AICallFn = (
   systemPrompt: string,
   userPrompt: string,
-  images?: Array<{ id: string; src: string }>,
 ) => Promise<string>;

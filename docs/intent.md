@@ -25,6 +25,7 @@ MindFlow 面向自学者与培训场景：用户填写**必填的课程提示词
 **产品能力（当前版本不提供）**
 
 - Pro 幻灯片编辑、TTS / ASR、AI 图 / 视频生成
+- PDF 图片提取、模型视觉输入、白板专用能力（PDF 文本入库与检索继续保留）
 - interactive / PBL 场景类型、联网搜索
 - 课堂 zip / PPTX 导入导出、复杂 Roundtable UI
 - 多 Provider 大型设置面板（MVP 使用精简设置弹窗）

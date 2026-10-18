@@ -20,9 +20,6 @@ export {
   buildCourseContext,
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
-  formatImageDescription,
-  formatImagePlaceholder,
-  buildVisionUserContent,
   buildLanguageText,
 } from './prompt-formatters';
 
@@ -30,7 +27,7 @@ export {
 export { parseJsonResponse, tryParseJson } from './json-repair';
 
 // Outline generator (Stage 1)
-export { generateSceneOutlinesFromRequirements, applyOutlineFallbacks } from './outline-generator';
+export { generateSceneOutlinesFromRequirements } from './outline-generator';
 
 // Scene generator (Stage 2)
 export {
@@ -45,7 +42,6 @@ export type { SceneContentOptions, SceneActionsOptions } from './scene-generator
 export {
   buildSceneFromOutline,
   buildCompleteScene,
-  uniquifyMediaElementIds,
 } from './scene-builder';
 
 // Pipeline runner

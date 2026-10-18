@@ -2,8 +2,8 @@
  * Scene Content Generation API
  * 场景内容生成 API
  *
- * Generates scene content (slides/quiz/interactive/pbl) from an outline.
- * 根据场景大纲生成场景内容（幻灯片/测验/互动/PBL）。
+ * Generates scene content (slides/quiz) from an outline.
+ * 根据场景大纲生成场景内容（幻灯片/测验）。
  * This is the first half of the two-step scene generation pipeline.
  * 这是两步式场景生成流水线的第一阶段。
  * Does NOT generate actions — use /api/generate/scene-actions for that.
@@ -13,12 +13,10 @@
 import { NextRequest } from 'next/server';
 import { callLLM } from '@/lib/ai/llm';
 import {
-  applyOutlineFallbacks,
   generateSceneContent,
-  buildVisionUserContent,
 } from '@/lib/generation/generation-pipeline';
 import type { AgentInfo } from '@/lib/generation/generation-pipeline';
-import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
+import type { SceneOutline } from '@/lib/types/generation';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
@@ -30,8 +28,6 @@ export const maxDuration = 300;
 export async function POST(req: NextRequest) {
   // 1. 解析 body
   // 2. resolveModelFromRequest → 拿到 LLM 实例
-  // 3. applyOutlineFallbacks → 无效 interactive/pbl 降级为 slide
-  // 4. 按 suggestedImageIds 筛选 assignedImages
   // 5. generateSceneContent(effectiveOutline, aiCall, options)
   // 6. return { content, effectiveOutline }
   let outlineTitle: string | undefined;
@@ -41,8 +37,6 @@ export async function POST(req: NextRequest) {
     const {
       outline: rawOutline,
       allOutlines,
-      pdfImages,
-      imageMapping,
       stageInfo: _stageInfo,
       stageId,
       agents,
@@ -50,8 +44,6 @@ export async function POST(req: NextRequest) {
     } = body as {
       outline: SceneOutline;
       allOutlines: SceneOutline[];
-      pdfImages?: PdfImage[];
-      imageMapping?: ImageMapping;
       stageInfo: {
         name: string;
         description?: string;
@@ -91,36 +83,11 @@ export async function POST(req: NextRequest) {
     outlineTitle = rawOutline?.title;
     resolvedModelString = modelString;
 
-    // Detect vision capability
-    // 检测模型是否支持视觉能力
-    const hasVision = !!modelInfo?.capabilities?.vision;
 
-    // Vision-aware AI call function
-    // 支持视觉输入的 AI 调用函数
     const aiCall = async (
       systemPrompt: string,
       userPrompt: string,
-      images?: Array<{ id: string; src: string }>,
     ): Promise<string> => {
-      if (images?.length && hasVision) {
-        const result = await callLLM(
-          {
-            model: languageModel,
-            system: systemPrompt,
-            messages: [
-              {
-                role: 'user' as const,
-                content: buildVisionUserContent(userPrompt, images),
-              },
-            ],
-            maxOutputTokens: modelInfo?.outputWindow,
-          },
-          'scene-content',
-          undefined,
-          thinkingConfig,
-        );
-        return result.text;
-      }
       const result = await callLLM(
         {
           model: languageModel,
@@ -135,30 +102,8 @@ export async function POST(req: NextRequest) {
       return result.text;
     };
 
-    // ── Apply fallbacks ──
-    // ── 应用回退/兜底策略 ──
-    const effectiveOutline = applyOutlineFallbacks(outline, !!languageModel);
+    const effectiveOutline = outline;
 
-    // ── Filter images assigned to this outline ──
-    // ── 筛选分配给当前大纲的图片 ──
-    let assignedImages: PdfImage[] | undefined;
-    if (
-      pdfImages &&
-      pdfImages.length > 0 &&
-      effectiveOutline.suggestedImageIds &&
-      effectiveOutline.suggestedImageIds.length > 0
-    ) {
-      const suggestedIds = new Set(effectiveOutline.suggestedImageIds);
-      assignedImages = pdfImages.filter((img) => suggestedIds.has(img.id));
-    }
-
-    // ── Media generation is handled client-side in parallel (media-orchestrator.ts) ──
-    // ── 媒体生成由客户端并行处理（media-orchestrator.ts） ──
-    // The content generator receives placeholder IDs (gen_img_1, gen_vid_1) as-is.
-    // 内容生成器会原样接收占位符 ID（gen_img_1, gen_vid_1）。
-    // resolveImageIds() in generation-pipeline.ts will keep these placeholders in elements.
-    // generation-pipeline.ts 中的 resolveImageIds() 会保留元素中的这些占位符。
-    const generatedMediaMapping: ImageMapping = {};
 
     // ── Generate content ──
     // ── 生成内容 ──
@@ -167,14 +112,8 @@ export async function POST(req: NextRequest) {
     );
 
     const content = await generateSceneContent(effectiveOutline, aiCall, {
-      assignedImages,
-      imageMapping,
-      languageModel: effectiveOutline.type === 'pbl' ? languageModel : undefined,
-      visionEnabled: hasVision,
-      generatedMediaMapping,
       agents,
       languageDirective,
-      thinkingConfig,
     });
 
     if (!content) {

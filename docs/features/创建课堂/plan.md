@@ -116,7 +116,7 @@ CC 中的「进入生成预览」= 前端在 201 成功后导航至 **`/generati
 
 | 区域 | 要求 |
 |------|------|
-| 品牌 | `public/mindflow-logo.svg`；中文文案（MVP 精简 `use-i18n`，无多语言切换） |
+| 品牌 | 使用已确认的「灵感生长」Logo：浅色 `public/mindflow-logo.svg`、深色 `public/mindflow-logo-dark.svg`，按现有主题切换；图标与使用方式见[品牌视觉](../../brand.md)。中文文案（MVP 精简 `use-i18n`，无多语言切换） |
 | 需求输入 | `textarea`；草稿键 `requirementDraft`（localStorage） |
 | 学习者画像 | 昵称、背景；localStorage 持久化，提交并入 `requirements`；头像不进 API |
 | PDF | 单文件选择；有文件时走 multipart |

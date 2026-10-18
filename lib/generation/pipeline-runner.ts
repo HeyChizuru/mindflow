@@ -44,8 +44,6 @@ export async function runGenerationPipeline(
 
     const outlinesResult = await generateSceneOutlinesFromRequirements(
       session.requirements,
-      undefined, // No PDF text in this flow
-      undefined, // No PDF images in this flow
       aiCall,
       callbacks,
     );

@@ -14,7 +14,6 @@ import { callLLM } from '@/lib/ai/llm';
 import {
   generateSceneActions,
   buildCompleteScene,
-  buildVisionUserContent,
   type SceneGenerationContext,
   type AgentInfo,
 } from '@/lib/generation/generation-pipeline';
@@ -22,8 +21,6 @@ import type { SceneOutline } from '@/lib/types/generation';
 import type {
   GeneratedSlideContent,
   GeneratedQuizContent,
-  GeneratedInteractiveContent,
-  GeneratedPBLContent,
 } from '@/lib/types/generation';
 import type { SpeechAction } from '@/lib/types/action';
 import { createLogger } from '@/lib/logger';
@@ -52,10 +49,8 @@ export async function POST(req: NextRequest) {
       outline: SceneOutline;
       allOutlines: SceneOutline[];
       content:
-        | GeneratedSlideContent
-        | GeneratedQuizContent
-        | GeneratedInteractiveContent
-        | GeneratedPBLContent;
+      | GeneratedSlideContent
+      | GeneratedQuizContent;
       stageId: string;
       agents?: AgentInfo[];
       previousSpeeches?: string[];
@@ -93,36 +88,11 @@ export async function POST(req: NextRequest) {
     outlineTitle = outline?.title;
     resolvedModelString = modelString;
 
-    // Detect vision capability
-    // 检测模型是否支持视觉能力
-    const hasVision = !!modelInfo?.capabilities?.vision;
 
-    // AI call function (actions typically don't use vision, but kept for consistency)
-    // AI 调用函数（动作生成通常不使用视觉，保留此能力以保持一致性）
     const aiCall = async (
       systemPrompt: string,
       userPrompt: string,
-      images?: Array<{ id: string; src: string }>,
     ): Promise<string> => {
-      if (images?.length && hasVision) {
-        const result = await callLLM(
-          {
-            model: languageModel,
-            system: systemPrompt,
-            messages: [
-              {
-                role: 'user' as const,
-                content: buildVisionUserContent(userPrompt, images),
-              },
-            ],
-            maxOutputTokens: modelInfo?.outputWindow,
-          },
-          'scene-actions',
-          undefined,
-          thinkingConfig,
-        );
-        return result.text;
-      }
       const result = await callLLM(
         {
           model: languageModel,
