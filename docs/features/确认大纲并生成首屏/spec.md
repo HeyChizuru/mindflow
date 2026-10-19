@@ -3,7 +3,7 @@ feature_id: 确认大纲并生成首屏
 artifact: spec
 title: 确认大纲并生成首屏
 spec_status: accepted
-delivery_status: in_progress
+delivery_status: verified
 requires: [流式大纲与手改]
 governed_by: [intent, adr-002, adr-003, adr-004, adr-005]
 related_to: [文档入库, 配置模型, 后台续生成, 课堂播放与测验, 课堂讨论]
