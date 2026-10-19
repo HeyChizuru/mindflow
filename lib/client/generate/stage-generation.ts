@@ -1,5 +1,8 @@
-import type { ConfirmOutlinesBody, ConfirmOutlinesResponse, GenerationPreviewResponse } from "@/lib/types/stage-generation";
-import { confirmOutlinesBodySchema, confirmOutlinesResponseSchema, generationPreviewResponseSchema } from "@/lib/validators/stage-generation";
+import type { ConfirmOutlinesBody, ConfirmOutlinesResponse, GenerationPreviewResponse, SceneContentGenerationBody, SceneActionsGenerationBody } from "@/lib/types/stage-generation";
+import { confirmOutlinesBodySchema, confirmOutlinesResponseSchema, generationPreviewResponseSchema, sceneContentGenerationBodySchema, sceneContentGenerationResponseSchema, sceneActionsGenerationBodySchema, sceneActionsGenerationResponseSchema } from "@/lib/validators/stage-generation";
+import type { Scene } from "@/lib/types/scene";
+import type { SceneOutline } from "@/lib/types/outline";
+import { generatedContentForOutlineSchema } from "@/lib/validators/scenes";
 import { apiErrorSchema } from "@/lib/validators/stages";
 
 export class StageGenerationRequestError extends Error {
@@ -52,6 +55,53 @@ export async function getGenerationPreview(stageId: string, signal?: AbortSignal
   const parsed = generationPreviewResponseSchema.safeParse(await readResponse(response, fallback));
   if (!parsed.success || parsed.data.stageId.toLowerCase() !== stageId.toLowerCase()) {
     throw new StageGenerationRequestError("大纲数据无效，请重试", response.status);
+  }
+  if (parsed.data.outlinesStatus === "confirmed" && parsed.data.firstScene
+    && !isSceneForTarget(parsed.data.firstScene, stageId, parsed.data.outlines[0])) {
+    throw new StageGenerationRequestError("已保存首屏与课堂定稿不一致，请重试", response.status);
+  }
+  return parsed.data;
+}
+
+function isSceneForTarget(scene: Scene, stageId: string, outline: SceneOutline): boolean {
+  if (scene.stageId.toLowerCase() !== stageId.toLowerCase() || scene.outlineId !== outline.id
+    || scene.type !== outline.type || scene.order !== outline.order || scene.title !== outline.title) return false;
+  const content = scene.content.type === "slide" ? scene.content.canvas : { questions: scene.content.questions };
+  return generatedContentForOutlineSchema(outline).safeParse(content).success;
+}
+
+async function postSceneGeneration(path: string, body: unknown, headers: HeadersInit, fallback: string, signal?: AbortSignal) {
+  try {
+    const requestHeaders = new Headers(headers);
+    requestHeaders.set("Content-Type", "application/json");
+    const response = await fetch(path, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal });
+    return await readResponse(response, fallback);
+  } catch (error) {
+    if (signal?.aborted || error instanceof StageGenerationRequestError) throw error;
+    throw new StageGenerationRequestError(fallback);
+  }
+}
+
+export async function generateFirstSceneContent(input: SceneContentGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
+  const body = sceneContentGenerationBodySchema.safeParse(input);
+  if (!body.success) throw new StageGenerationRequestError("生成依据无效，请重新读取课堂", 400);
+  const parsed = sceneContentGenerationResponseSchema.safeParse(await postSceneGeneration(
+    "/api/generate/scene-content", body.data, headers, "场景内容生成失败，请重试", signal,
+  ));
+  if (!parsed.success || JSON.stringify(parsed.data.effectiveOutline) !== JSON.stringify(body.data.outline)) {
+    throw new StageGenerationRequestError("生成内容与目标大纲不一致，请重试");
+  }
+  return parsed.data;
+}
+
+export async function generateFirstSceneActions(input: SceneActionsGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
+  const body = sceneActionsGenerationBodySchema.safeParse(input);
+  if (!body.success) throw new StageGenerationRequestError("场景内容无效，请重新生成内容", 400);
+  const parsed = sceneActionsGenerationResponseSchema.safeParse(await postSceneGeneration(
+    "/api/generate/scene-actions", body.data, headers, "讲解动作生成或保存失败，请重试", signal,
+  ));
+  if (!parsed.success || !isSceneForTarget(parsed.data.scene, body.data.stageId, body.data.outline)) {
+    throw new StageGenerationRequestError("保存结果与目标场景不一致，请重新读取课堂");
   }
   return parsed.data;
 }

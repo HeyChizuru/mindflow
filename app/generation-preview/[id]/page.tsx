@@ -2,25 +2,37 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { AlertCircle, ArrowLeft, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OutlinesEditor } from '@/components/generation-preview/outlines-editor';
 import { streamSceneOutlines } from '@/lib/client/generate/stream-scene-outlines';
 import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
-import { confirmOutlines, getGenerationPreview } from '@/lib/client/generate/stage-generation';
+import { confirmOutlines, getGenerationPreview, generateFirstSceneContent, generateFirstSceneActions, StageGenerationRequestError } from '@/lib/client/generate/stage-generation';
+import { getStage, GetStageError } from '@/lib/client/stages/get-stage';
+import { formatUserProfile } from '@/lib/generation/prompt-formatters';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { SceneOutline } from '@/lib/types/outline';
-import type { ConfirmOutlinesResponse } from '@/lib/types/stage-generation';
+import type { ConfirmOutlinesResponse, GenerationPreviewResponse } from '@/lib/types/stage-generation';
 import { sceneOutlinesSchema } from '@/lib/validators/outline';
-import { ALL_STEPS } from './types';
+import { ALL_STEPS, type FirstScenePhase } from './types';
 import { StepVisualizer } from './components/visualizers';
+import { FirstSceneProgress } from './components/first-scene-progress';
 
 const STREAM_FAILED = '大纲生成失败，请重试';
+type ConfirmedPreview = Extract<GenerationPreviewResponse, { outlinesStatus: 'confirmed' }>;
+
+function requestMessage(error: unknown): string {
+  return error instanceof StageGenerationRequestError || error instanceof GetStageError
+    ? error.message : '读取或生成首屏失败，请重试';
+}
 
 export default function GenerationPreviewPage() {
-  const params = useParams<{ id: string }>();
-  const stageId = params.id;
+  const { id } = useParams<{ id: string }>();
+  return <LiveGenerationPreviewPage key={id} stageId={id} />;
+}
+
+function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
   const router = useRouter();
   const { t } = useI18n();
   const [outlines, setOutlines] = useState<SceneOutline[]>([]);
@@ -36,6 +48,7 @@ export default function GenerationPreviewPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runId, setRunId] = useState(0);
+  const [firstScenePhase, setFirstScenePhase] = useState<FirstScenePhase>({ step: 'reading' });
 
   const restoreConfirmed = useCallback((saved: ConfirmOutlinesResponse) => {
     setOutlines(saved.outlines);
@@ -43,10 +56,59 @@ export default function GenerationPreviewPage() {
     setIsConfirmed(true);
     setIsStreaming(false);
     setIsReading(false);
-    setEditorOpen(true);
+    setEditorOpen(false);
+    setIsConfirming(false);
     setError(null);
     setConfirmationError(null);
   }, []);
+
+  const resumeFirstScene = useCallback(async (saved: ConfirmedPreview, signal: AbortSignal) => {
+    if (signal.aborted) return;
+    restoreConfirmed(saved);
+    if (saved.firstScene) {
+      setFirstScenePhase({ step: 'complete' });
+      return;
+    }
+    let failedStep: 'reading' | 'slide-content' | 'actions' = 'reading';
+    setFirstScenePhase({ step: 'reading' });
+    try {
+      const stage = await getStage(saved.stageId, signal);
+      if (signal.aborted) return;
+      const input = {
+        stageId: saved.stageId,
+        outline: saved.outlines[0],
+        allOutlines: saved.outlines,
+        requirement: stage.requirements.requirement,
+        languageDirective: saved.languageDirective,
+        userProfile: formatUserProfile(stage.requirements),
+      };
+      failedStep = 'slide-content';
+      setFirstScenePhase({ step: 'slide-content' });
+      const content = await generateFirstSceneContent(input, outlineRequestHeaders(saved.hasKnowledgeBase), signal);
+      if (signal.aborted) return;
+      failedStep = 'actions';
+      setFirstScenePhase({ step: 'actions' });
+      await generateFirstSceneActions({ ...input, outline: content.effectiveOutline, content: content.content, previousSpeeches: [] }, outlineRequestHeaders(false), signal);
+      if (!signal.aborted) setFirstScenePhase({ step: 'complete' });
+    } catch (caught) {
+      if (signal.aborted) return;
+      if (failedStep === 'reading') {
+        setFirstScenePhase({ step: 'error', failedStep, message: requestMessage(caught) });
+        return;
+      }
+      setFirstScenePhase({ step: 'reading' });
+      try {
+        const restored = await getGenerationPreview(saved.stageId, signal);
+        if (signal.aborted) return;
+        if (restored.outlinesStatus !== 'confirmed') throw new StageGenerationRequestError('课堂定稿状态异常，请重新读取');
+        restoreConfirmed(restored);
+        setFirstScenePhase(restored.firstScene ? { step: 'complete' }
+          : { step: 'error', failedStep, message: requestMessage(caught) });
+      } catch (readError) {
+        if (!signal.aborted) setFirstScenePhase({ step: 'error', failedStep: 'reading', message: requestMessage(readError) });
+      }
+    }
+  }, [restoreConfirmed]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,6 +127,7 @@ export default function GenerationPreviewPage() {
       setIsConfirmed(false);
       setIsConfirming(false);
       setEditorOpen(false);
+      setFirstScenePhase({ step: 'reading' });
       confirmationController.current = null;
       let startedStream = false;
 
@@ -73,7 +136,7 @@ export default function GenerationPreviewPage() {
         if (cancelled) return;
         setHasKnowledgeBase(stage.hasKnowledgeBase);
         if (stage.outlinesStatus === 'confirmed') {
-          restoreConfirmed(stage);
+          await resumeFirstScene(stage, controller.signal);
           return;
         }
         startedStream = true;
@@ -111,7 +174,7 @@ export default function GenerationPreviewPage() {
             const saved = await getGenerationPreview(stageId, controller.signal);
             if (cancelled) return;
             if (saved.outlinesStatus === 'confirmed') {
-              restoreConfirmed(saved);
+              await resumeFirstScene(saved, controller.signal);
               return;
             }
           } catch {
@@ -131,7 +194,7 @@ export default function GenerationPreviewPage() {
       controller.abort();
       confirmationController.current?.abort();
     };
-  }, [stageId, runId, restoreConfirmed]);
+  }, [stageId, runId, resumeFirstScene]);
 
   const canConfirm = streamCompleted && !isReading && !isStreaming && !isConfirmed
     && sceneOutlinesSchema.safeParse(outlines).success;
@@ -149,14 +212,24 @@ export default function GenerationPreviewPage() {
         outlineRequestHeaders(hasKnowledgeBase),
         controller.signal,
       );
-      if (!controller.signal.aborted) restoreConfirmed(saved);
+      if (controller.signal.aborted) return;
+      restoreConfirmed(saved);
+      setFirstScenePhase({ step: 'reading' });
+      try {
+        const preview = await getGenerationPreview(saved.stageId, controller.signal);
+        if (controller.signal.aborted) return;
+        if (preview.outlinesStatus !== 'confirmed') throw new StageGenerationRequestError('课堂定稿状态异常，请重新读取');
+        await resumeFirstScene(preview, controller.signal);
+      } catch (readError) {
+        if (!controller.signal.aborted) setFirstScenePhase({ step: 'error', failedStep: 'reading', message: requestMessage(readError) });
+      }
     } catch (caught) {
       if (controller.signal.aborted) return;
       try {
         const saved = await getGenerationPreview(stageId, controller.signal);
         if (controller.signal.aborted) return;
         if (saved.outlinesStatus === 'confirmed') {
-          restoreConfirmed(saved);
+          await resumeFirstScene(saved, controller.signal);
           return;
         }
       } catch {
@@ -179,6 +252,42 @@ export default function GenerationPreviewPage() {
     if (isConfirmed || isConfirming) return;
     setRunId((current) => current + 1);
   };
+
+  const retryFirstScene = async () => {
+    if (confirmationController.current || firstScenePhase.step !== 'error') return;
+    const controller = new AbortController();
+    confirmationController.current = controller;
+    setFirstScenePhase({ step: 'reading' });
+    try {
+      const saved = await getGenerationPreview(stageId, controller.signal);
+      if (controller.signal.aborted) return;
+      if (saved.outlinesStatus !== 'confirmed') throw new StageGenerationRequestError('课堂定稿状态异常，请重新读取');
+      await resumeFirstScene(saved, controller.signal);
+    } catch (readError) {
+      if (!controller.signal.aborted) setFirstScenePhase({ step: 'error', failedStep: 'reading', message: requestMessage(readError) });
+    } finally {
+      if (confirmationController.current === controller) confirmationController.current = null;
+    }
+  };
+
+  if (isConfirmed && !editorOpen) {
+    return (
+      <MotionConfig reducedMotion="user">
+        <div data-language-directive={languageDirective ?? ''} className="relative flex min-h-dvh w-full flex-col items-center overflow-x-hidden bg-gradient-to-b from-background to-muted p-4">
+          <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+            <div className="absolute left-1/4 top-0 size-96 rounded-full bg-primary/10 blur-3xl" />
+            <div className="absolute bottom-0 right-1/4 size-96 rounded-full bg-primary/5 blur-3xl" />
+          </div>
+          <div className="relative z-10 w-full">
+            <Button variant="ghost" size="sm" onClick={goBackToHome}><ArrowLeft data-icon="inline-start" />{t('generation.backToHome')}</Button>
+          </div>
+          <div className="relative z-10 flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-8 py-10">
+            <FirstSceneProgress phase={firstScenePhase} sceneType={outlines[0].type} onRetry={retryFirstScene} onViewOutline={() => setEditorOpen(true)} />
+          </div>
+        </div>
+      </MotionConfig>
+    );
+  }
 
   if (editorOpen) {
     return (
@@ -234,7 +343,7 @@ export default function GenerationPreviewPage() {
                 setConfirmationError(null);
               }}
               onBack={goBackToHome}
-              onCollapse={isConfirmed ? undefined : () => setEditorOpen(false)}
+              onCollapse={() => setEditorOpen(false)}
               isStreaming={isStreaming}
               isLoading={isConfirming}
               isReadOnly={isConfirmed}
@@ -283,7 +392,7 @@ export default function GenerationPreviewPage() {
         >
           <div className="relative overflow-hidden rounded-xl border border-muted/40 shadow-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl min-h-[400px] flex flex-col items-center justify-center p-8 md:p-12">
             <div className="absolute top-6 left-0 right-0 flex justify-center gap-2">
-              {ALL_STEPS.map((step) => (
+              {ALL_STEPS.slice(0, 1).map((step) => (
                 <div key={step.id} className="h-1.5 w-8 rounded-full bg-blue-500" />
               ))}
             </div>

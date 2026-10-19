@@ -1,4 +1,11 @@
-import { FileText } from 'lucide-react';
+import { Clapperboard, FileText, LayoutPanelLeft } from 'lucide-react';
+
+export type FirstScenePhase =
+  | { step: 'reading' }
+  | { step: 'slide-content' }
+  | { step: 'actions' }
+  | { step: 'complete' }
+  | { step: 'error'; failedStep: 'reading' | 'slide-content' | 'actions'; message?: string };
 
 export type GenerationStep = {
   id: string;
@@ -8,7 +15,7 @@ export type GenerationStep = {
   type: 'writing' | 'visual';
 };
 
-/** 本单元只点亮大纲一步。幻灯片内容与动作的步骤不在这里切换。 */
+/** 首屏展示步骤，由真实请求结果推进。 */
 export const ALL_STEPS: GenerationStep[] = [
   {
     id: 'outline',
@@ -16,5 +23,19 @@ export const ALL_STEPS: GenerationStep[] = [
     description: 'generation.generatingOutlinesDesc',
     icon: FileText,
     type: 'writing',
+  },
+  {
+    id: 'slide-content',
+    title: 'generation.generatingFirstContent',
+    description: 'generation.generatingFirstContentDesc',
+    icon: LayoutPanelLeft,
+    type: 'visual',
+  },
+  {
+    id: 'actions',
+    title: 'generation.generatingFirstActions',
+    description: 'generation.generatingFirstActionsDesc',
+    icon: Clapperboard,
+    type: 'visual',
   },
 ];

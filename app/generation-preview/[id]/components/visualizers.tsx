@@ -19,16 +19,18 @@ export function StepVisualizer({
   stepId,
   outlines,
   onExpandOutline,
+  sceneType = 'slide',
 }: {
   stepId: string;
   outlines?: SceneOutline[] | null;
   onExpandOutline?: () => void;
+  sceneType?: SceneOutline['type'];
 }) {
   switch (stepId) {
     case 'outline':
       return <StreamingOutlineVisualizer outlines={outlines || []} onExpand={onExpandOutline} />;
     case 'slide-content':
-      return <ContentVisualizer />;
+      return <ContentVisualizer sceneType={sceneType} />;
     case 'actions':
       return <ActionsVisualizer />;
     default:
@@ -177,17 +179,9 @@ function StreamingOutlineVisualizer({
   );
 }
 
-function ContentVisualizer() {
-  const [index, setIndex] = useState(0);
-
-  const totalTypes = 2;
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex((prev) => (prev + 1) % totalTypes);
-    }, 3200);
-    return () => clearInterval(timer);
-  }, []);
+function ContentVisualizer({ sceneType }: { sceneType: SceneOutline['type'] }) {
+  const { t } = useI18n();
+  const index = sceneType === 'quiz' ? 1 : 0;
 
   const variants = {
     enter: { x: 50, opacity: 0, scale: 0.9, rotateY: -15 },
@@ -200,14 +194,14 @@ function ContentVisualizer() {
       case 0:
         return {
           color: 'blue',
-          label: 'SLIDE',
+          label: t('generation.sceneTypeSlide'),
           badge:
             'bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
         };
       case 1:
         return {
           color: 'purple',
-          label: 'QUIZ',
+          label: t('generation.sceneTypeQuiz'),
           badge:
             'bg-purple-100 text-purple-600 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
         };
@@ -389,40 +383,41 @@ function ContentVisualizer() {
 
 // Actions: Timeline of speech, spotlight, and interactions being orchestrated
 function ActionsVisualizer() {
+  const { t } = useI18n();
   const [activeIdx, setActiveIdx] = useState(0);
 
   const actionItems = [
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',
     },
     {
       icon: Focus,
-      label: 'Spotlight',
+      label: t('generation.actionHighlight'),
       color: 'text-amber-500',
       activeBg: 'bg-amber-500/10',
       activeBorder: 'border-amber-200 dark:border-amber-800',
     },
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',
     },
     {
       icon: Play,
-      label: 'Interact',
+      label: t('generation.actionComponent'),
       color: 'text-emerald-500',
       activeBg: 'bg-emerald-500/10',
       activeBorder: 'border-emerald-200 dark:border-emerald-800',
     },
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',

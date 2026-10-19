@@ -35,9 +35,16 @@ function mapGetStageError(error: string): string {
  * 按 id 读取已保存课堂。
  * 用 stageResponseSchema 校验；404 等失败抛出 GetStageError，不写库。
  */
-export async function getStage(stageId: string): Promise<StageResponse> {
-  const response = await fetch(`/api/stages/${encodeURIComponent(stageId)}`);
-  const text = await response.text();
+export async function getStage(stageId: string, signal?: AbortSignal): Promise<StageResponse> {
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetch(`/api/stages/${encodeURIComponent(stageId)}`, { cache: "no-store", signal });
+    text = await response.text();
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new GetStageError(GET_FAILED);
+  }
   let json: unknown;
   try {
     json = text ? JSON.parse(text) : {};
@@ -52,7 +59,7 @@ export async function getStage(stageId: string): Promise<StageResponse> {
   }
 
   const parsed = stageResponseSchema.safeParse(json);
-  if (!parsed.success) {
+  if (!parsed.success || parsed.data.id.toLowerCase() !== stageId.toLowerCase()) {
     throw new GetStageError(GET_RESPONSE_INVALID);
   }
 
