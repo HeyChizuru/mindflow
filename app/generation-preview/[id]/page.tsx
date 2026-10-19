@@ -248,6 +248,10 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
     router.push('/');
   };
 
+  const enterClassroom = () => {
+    router.push(`/classroom/${encodeURIComponent(stageId)}`);
+  };
+
   const retry = () => {
     if (isConfirmed || isConfirming) return;
     setRunId((current) => current + 1);
@@ -282,7 +286,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
             <Button variant="ghost" size="sm" onClick={goBackToHome}><ArrowLeft data-icon="inline-start" />{t('generation.backToHome')}</Button>
           </div>
           <div className="relative z-10 flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-8 py-10">
-            <FirstSceneProgress phase={firstScenePhase} sceneType={outlines[0].type} onRetry={retryFirstScene} onViewOutline={() => setEditorOpen(true)} />
+            <FirstSceneProgress phase={firstScenePhase} sceneType={outlines[0].type} onRetry={retryFirstScene} onViewOutline={() => setEditorOpen(true)} onEnterClassroom={enterClassroom} />
           </div>
         </div>
       </MotionConfig>

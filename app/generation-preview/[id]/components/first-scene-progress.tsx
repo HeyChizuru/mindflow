@@ -9,11 +9,12 @@ import type { SceneOutline } from '@/lib/types/outline';
 import { ALL_STEPS, type FirstScenePhase } from '../types';
 import { StepVisualizer } from './visualizers';
 
-export function FirstSceneProgress({ phase, sceneType, onRetry, onViewOutline }: {
+export function FirstSceneProgress({ phase, sceneType, onRetry, onViewOutline, onEnterClassroom }: {
   phase: FirstScenePhase;
   sceneType: SceneOutline['type'];
   onRetry: () => void;
   onViewOutline: () => void;
+  onEnterClassroom: () => void;
 }) {
   const { t } = useI18n();
   const isComplete = phase.step === 'complete';
@@ -64,7 +65,7 @@ export function FirstSceneProgress({ phase, sceneType, onRetry, onViewOutline }:
         {isError ? (
           <Button variant="action" size="lg" onClick={onRetry}>{t(failedRead ? 'generation.retryReadFirstScene' : 'generation.retryFirstScene')}</Button>
         ) : isComplete ? (
-          <Button variant="action" size="lg" disabled>{t('generation.enterClassroom')}</Button>
+          <Button variant="action" size="lg" onClick={onEnterClassroom}>{t('generation.enterClassroom')}</Button>
         ) : (
           <p className="flex items-center gap-2 text-sm text-muted-foreground"><Sparkles className="size-3 motion-safe:animate-pulse" />{t(isReading ? 'generation.readingFirstScene' : 'generation.aiWorking')}</p>
         )}
