@@ -1,41 +1,28 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { Scene, StageMode } from '@/lib/types/stage';
-import { SlideEditor as SlideRenderer } from '../slide-renderer/Editor';
-import { QuizView } from '../scene-renderers/quiz-view';
-import { InteractiveRenderer } from '../scene-renderers/interactive-renderer';
-import { PBLRenderer } from '../scene-renderers/pbl-renderer';
+import type { Scene } from '@/lib/types/scene';
+import { SlideEditor as SlideRenderer } from '@/components/slide-renderer/Editor';
+import { QuizView } from '@/components/scene-renderers/quiz-view';
 
 interface SceneRendererProps {
   readonly scene: Scene;
-  readonly mode: StageMode;
 }
 
-/**
- * Playback scene dispatcher. In Pro (edit) mode, Stage renders EditShell
- * directly as a top-level takeover — SceneRenderer is only on the playback
- * path, so it does not branch on `mode === 'edit'`.
- */
-export function SceneRenderer({ scene, mode }: SceneRendererProps) {
+/** Dispatches only the slide and quiz scene types supported by classroom playback. */
+export function SceneRenderer({ scene }: SceneRendererProps) {
   const renderer = useMemo(() => {
     switch (scene.type) {
       case 'slide':
-        if (scene.content.type !== 'slide') return <div>Invalid slide content</div>;
-        return <SlideRenderer mode={mode} />;
+        if (scene.content.type !== 'slide') return <div role="alert">幻灯片内容格式无效</div>;
+        return <SlideRenderer />;
       case 'quiz':
-        if (scene.content.type !== 'quiz') return <div>Invalid quiz content</div>;
+        if (scene.content.type !== 'quiz') return <div role="alert">测验内容格式无效</div>;
         return <QuizView key={scene.id} questions={scene.content.questions} sceneId={scene.id} />;
-      case 'interactive':
-        if (scene.content.type !== 'interactive') return <div>Invalid interactive content</div>;
-        return <InteractiveRenderer content={scene.content} sceneId={scene.id} />;
-      case 'pbl':
-        if (scene.content.type !== 'pbl') return <div>Invalid PBL content</div>;
-        return <PBLRenderer content={scene.content} mode={mode} sceneId={scene.id} />;
       default:
-        return <div>Unknown scene type</div>;
+        return <div role="status">暂不支持此场景类型</div>;
     }
-  }, [scene, mode]);
+  }, [scene]);
 
   return <div className="w-full h-full">{renderer}</div>;
 }
