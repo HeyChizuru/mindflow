@@ -93,7 +93,7 @@ export function PlaybackChromeRoot() {
 
     const engine = new PlaybackEngine(
       [currentScene],
-      new ActionEngine(useStageStore, audioPlayer),
+      new ActionEngine(audioPlayer),
       audioPlayer,
       {
         onModeChange: (mode) => updateScenePlaybackState(sceneKey, { engineMode: mode }),

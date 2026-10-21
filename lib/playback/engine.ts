@@ -35,7 +35,6 @@ import type {
 } from './types';
 import type { AudioPlayer } from '@/lib/utils/audio-player';
 import { ActionEngine } from '@/lib/action/engine';
-import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
 import { createLogger } from '@/lib/logger';
@@ -300,9 +299,6 @@ export class PlaybackEngine {
     this.actionEngine.clearEffects();
     this.currentTopicState = 'closed';
 
-    // Close whiteboard if it was open during the discussion
-    useCanvasStore.getState().setWhiteboardOpen(false);
-
     this.callbacks.onDiscussionEnd?.();
 
     // Restore lecture state
@@ -326,7 +322,6 @@ export class PlaybackEngine {
     }
 
     this.actionEngine.clearEffects();
-    useCanvasStore.getState().setWhiteboardOpen(false);
     this.currentTopicState = 'closed';
     this.currentTrigger = null;
     this.restoreSavedLectureState();
@@ -575,16 +570,6 @@ export class PlaybackEngine {
         break;
       }
 
-      case 'play_video':
-      case 'wb_open':
-      case 'wb_draw_text':
-      case 'wb_draw_shape':
-      case 'wb_draw_chart':
-      case 'wb_draw_latex':
-      case 'wb_draw_table':
-      case 'wb_clear':
-      case 'wb_delete':
-      case 'wb_close':
       case 'widget_highlight':
       case 'widget_setState':
       case 'widget_annotation':

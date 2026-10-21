@@ -5,13 +5,61 @@ import { useStageStore } from '@/lib/store/stage';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Scene } from '@/lib/types/scene';
+import type { SceneOutline } from '@/lib/types/outline';
+import type { StageResponse } from '@/lib/types/stage';
 import { useI18n } from '@/lib/hooks/use-i18n';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseClassroomPayload(value: unknown, classroomId: string): {
+  stage: StageResponse;
+  scenes: Scene[];
+  outlines: SceneOutline[];
+  generatingOutlines: SceneOutline[];
+} {
+  if (!isRecord(value) || value.success !== true || !isRecord(value.classroom)) {
+    throw new Error('课堂读取响应格式无效');
+  }
+
+  const { stage, scenes, outlines, generatingOutlines } = value.classroom;
+  if (!isRecord(stage) || stage.id !== classroomId || !Array.isArray(scenes) || scenes.length === 0) {
+    throw new Error('课堂数据不完整或没有可播放场景');
+  }
+
+  const validScenes = scenes.every(
+    (scene) =>
+      isRecord(scene) &&
+      typeof scene.id === 'string' &&
+      scene.stageId === classroomId &&
+      (scene.type === 'slide' || scene.type === 'quiz') &&
+      typeof scene.title === 'string' &&
+      typeof scene.order === 'number' &&
+      isRecord(scene.content) &&
+      Array.isArray(scene.actions),
+  );
+  if (!validScenes) {
+    throw new Error('课堂场景数据不完整');
+  }
+
+  if ((outlines !== undefined && !Array.isArray(outlines)) ||
+      (generatingOutlines !== undefined && !Array.isArray(generatingOutlines))) {
+    throw new Error('课堂目录数据格式无效');
+  }
+
+  return {
+    stage: stage as unknown as StageResponse,
+    scenes: scenes as Scene[],
+    outlines: (outlines ?? []) as SceneOutline[],
+    generatingOutlines: (generatingOutlines ?? []) as SceneOutline[],
+  };
+}
 
 export default function ClassroomDetailPage() {
   const params = useParams();
   const classroomId = params?.id as string;
   const { t } = useI18n();
-  const { loadFromStorage } = useStageStore();
 
   const [attempt, setAttempt] = useState(0);
   const [completedLoad, setCompletedLoad] = useState<{ classroomId: string; attempt: number } | null>(
@@ -30,24 +78,28 @@ export default function ClassroomDetailPage() {
 
   const loadClassroom = useCallback(async () => {
     try {
-      await loadFromStorage(classroomId);
-
-      // API-generated classrooms are not available in IndexedDB. Keep the
-      // existing read fallback until the classroom API is connected later.
-      if (!useStageStore.getState().stage) {
-        const response = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
-        if (response.ok) {
-          const json = await response.json();
-          if (json.success && json.classroom) {
-            const { stage, scenes } = json.classroom;
-            useStageStore.getState().setStage(stage);
-            useStageStore.setState({
-              scenes: scenes as Scene[],
-              currentSceneId: (scenes as Scene[])[0]?.id ?? null,
-            });
-          }
-        }
+      const response = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
+      const responseText = await response.text();
+      let responseBody: unknown;
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        throw new Error(`课堂读取响应无法解析（HTTP ${response.status}）`);
       }
+
+      if (!response.ok) {
+        const message = isRecord(responseBody) && typeof responseBody.error === 'string'
+          ? responseBody.error
+          : `课堂读取失败（HTTP ${response.status}）`;
+        throw new Error(message);
+      }
+
+      const classroom = parseClassroomPayload(responseBody, classroomId);
+      const store = useStageStore.getState();
+      store.setStage(classroom.stage);
+      store.setOutlines(classroom.outlines);
+      store.setGeneratingOutlines(classroom.generatingOutlines);
+      store.setScenes(classroom.scenes);
     } catch (loadError) {
       setLoadError({
         classroomId,
@@ -57,7 +109,7 @@ export default function ClassroomDetailPage() {
     } finally {
       setCompletedLoad({ classroomId, attempt });
     }
-  }, [attempt, classroomId, loadFromStorage]);
+  }, [attempt, classroomId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
