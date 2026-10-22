@@ -1,6 +1,5 @@
 import tinycolor from 'tinycolor2';
-import { nanoid } from 'nanoid';
-import type { PPTElement, PPTLineElement, Slide } from '@/lib/types/slides';
+import type { PPTElement, PPTLineElement } from '@/lib/types/slides';
 
 interface RotatedElementData {
   left: number;
@@ -8,10 +7,6 @@ interface RotatedElementData {
   width: number;
   height: number;
   rotate: number;
-}
-
-interface IdMap {
-  [id: string]: string;
 }
 
 /**
@@ -143,67 +138,6 @@ export const getLineElementLength = (element: PPTLineElement) => {
   const deltaY = element.end[1] - element.start[1];
   const len = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
   return len;
-};
-
-export interface AlignLine {
-  value: number;
-  range: [number, number];
-}
-
-/**
- * 将一组对齐吸附线进行去重：同位置的的多条对齐吸附线仅留下一条，取该位置所有对齐吸附线的最大值和最小值为新的范围
- * @param lines 一组对齐吸附线信息
- */
-export const uniqAlignLines = (lines: AlignLine[]) => {
-  const uniqLines: AlignLine[] = [];
-  lines.forEach((line) => {
-    const index = uniqLines.findIndex((_line) => _line.value === line.value);
-    if (index === -1) uniqLines.push(line);
-    else {
-      const uniqLine = uniqLines[index];
-      const rangeMin = Math.min(uniqLine.range[0], line.range[0]);
-      const rangeMax = Math.max(uniqLine.range[1], line.range[1]);
-      const range: [number, number] = [rangeMin, rangeMax];
-      const _line = { value: line.value, range };
-      uniqLines[index] = _line;
-    }
-  });
-  return uniqLines;
-};
-
-/**
- * 以页面列表为基础，为每一个页面生成新的ID，并关联到旧ID形成一个字典
- * 主要用于页面元素时，维持数据中各处页面ID原有的关系
- * @param slides 页面列表
- */
-export const createSlideIdMap = (slides: Slide[]) => {
-  const slideIdMap: IdMap = {};
-  for (const slide of slides) {
-    slideIdMap[slide.id] = nanoid(10);
-  }
-  return slideIdMap;
-};
-
-/**
- * 以元素列表为基础，为每一个元素生成新的ID，并关联到旧ID形成一个字典
- * 主要用于复制元素时，维持数据中各处元素ID原有的关系
- * 例如：原本两个组合的元素拥有相同的groupId，复制后依然会拥有另一个相同的groupId
- * @param elements 元素列表数据
- */
-export const createElementIdMap = (elements: PPTElement[]) => {
-  const groupIdMap: IdMap = {};
-  const elIdMap: IdMap = {};
-  for (const element of elements) {
-    const groupId = element.groupId;
-    if (groupId && !groupIdMap[groupId]) {
-      groupIdMap[groupId] = nanoid(10);
-    }
-    elIdMap[element.id] = nanoid(10);
-  }
-  return {
-    groupIdMap,
-    elIdMap,
-  };
 };
 
 /**

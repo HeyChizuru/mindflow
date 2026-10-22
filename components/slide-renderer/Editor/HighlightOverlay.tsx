@@ -3,8 +3,9 @@
 import { useMemo } from 'react';
 import { useSceneSelector } from '@/lib/contexts/scene-context';
 import { useCanvasStore } from '@/lib/store/canvas';
-import type { SlideContent } from '@/lib/types/stage';
-import type { PPTElement } from '@/lib/types/slides';
+import type { SceneContent, SlideElement } from '@/lib/types/scene';
+
+type SlideContent = Extract<SceneContent, { type: 'slide' }>;
 
 /**
  * Highlight overlay component
@@ -25,7 +26,7 @@ export function HighlightOverlay() {
   const highlightOptions = useCanvasStore.use.highlightOptions();
 
   // Get the element list of the current scene
-  const elements = useSceneSelector<SlideContent, PPTElement[]>(
+  const elements = useSceneSelector<SlideContent, SlideElement[]>(
     (content) => content.canvas.elements,
   );
 

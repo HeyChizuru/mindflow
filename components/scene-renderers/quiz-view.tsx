@@ -1,99 +1,32 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   PieChart,
   CheckCircle2,
   XCircle,
-  RotateCcw,
   ChevronRight,
   Check,
   BookOpenText,
-  Loader2,
   Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { getCurrentModelConfig } from '@/lib/utils/model-config';
-import { createLogger } from '@/lib/logger';
+import type { QuizQuestion } from '@/lib/types/scene';
+import type { QuestionResult } from '@/lib/quiz/grading';
+import { Button } from '@/components/ui/button';
 
-const log = createLogger('QuizView');
-import type { QuizQuestion } from '@/lib/types/stage';
-import { useDraftCache } from '@/lib/hooks/use-draft-cache';
-import { SpeechButton } from '@/components/audio/speech-button';
-import { gradeChoiceQuestions, isShortAnswer, type QuestionResult } from '@/lib/quiz/grading';
-import {
-  clearSubmitted,
-  draftKey,
-  readSubmittedState,
-  writeSubmittedAnswers,
-  writeSubmittedResults,
-  type SubmittedState,
-} from '@/lib/quiz/persistence';
+type ChoiceQuestion = Extract<QuizQuestion, { type: 'single' | 'multiple' }>;
+type ShortQuestion = Extract<QuizQuestion, { type: 'short_answer' }>;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Phase = 'not_started' | 'answering' | 'grading' | 'reviewing';
+type Phase = 'not_started' | 'answering';
 
 interface QuizViewProps {
   readonly questions: QuizQuestion[];
   readonly sceneId: string;
-}
-
-/** Call /api/quiz-grade for a single short-answer question. */
-async function gradeShortAnswerQuestion(
-  q: QuizQuestion,
-  userAnswer: string,
-  language: string,
-): Promise<QuestionResult> {
-  const pts = q.points ?? 1;
-  try {
-    const modelConfig = getCurrentModelConfig();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-model': modelConfig.modelString,
-      'x-api-key': modelConfig.apiKey,
-    };
-    if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
-    if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
-
-    const res = await fetch('/api/quiz-grade', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        question: q.question,
-        userAnswer,
-        points: pts,
-        commentPrompt: q.commentPrompt,
-        language,
-      }),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { score: number; comment: string };
-    const earned = Math.max(0, Math.min(pts, data.score));
-    return {
-      questionId: q.id,
-      correct: earned >= pts * 0.8,
-      status: earned >= pts * 0.8 ? 'correct' : 'incorrect',
-      earned,
-      aiComment: data.comment,
-    };
-  } catch (err) {
-    log.error('[quiz-view] AI grading failed for', q.id, err);
-    // Fallback: give half credit
-    return {
-      questionId: q.id,
-      correct: null,
-      status: 'incorrect',
-      earned: Math.round(pts * 0.5),
-      aiComment:
-        language === 'zh-CN'
-          ? '评分服务暂时不可用，已给予基础分。'
-          : 'Grading service unavailable. Base score given.',
-    };
-  }
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
@@ -186,7 +119,7 @@ function SingleChoiceQuestion({
   disabled,
   result,
 }: {
-  question: QuizQuestion;
+  question: ChoiceQuestion;
   index: number;
   value?: string;
   onChange: (value: string) => void;
@@ -279,7 +212,7 @@ function MultipleChoiceQuestion({
   disabled,
   result,
 }: {
-  question: QuizQuestion;
+  question: ChoiceQuestion;
   index: number;
   value?: string[];
   onChange: (value: string[]) => void;
@@ -382,7 +315,7 @@ function ShortAnswerQuestion({
   disabled,
   result,
 }: {
-  question: QuizQuestion;
+  question: ShortQuestion;
   index: number;
   value?: string;
   onChange: (value: string) => void;
@@ -391,11 +324,6 @@ function ShortAnswerQuestion({
 }) {
   const isReview = !!result;
   const { t } = useI18n();
-  // Ref to track latest value for voice transcription append
-  const valueRef = useRef(value);
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
 
   return (
     <QuestionCard question={question} index={index} result={result}>
@@ -407,15 +335,6 @@ function ShortAnswerQuestion({
             disabled={disabled}
             placeholder={t('quiz.inputPlaceholder')}
             className="w-full min-h-[100px] p-3 pb-10 rounded-xl border border-gray-200 dark:border-gray-600 text-sm resize-none focus:outline-none focus:border-violet-300 dark:focus:border-violet-600 focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/50 transition-all disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-500 dark:bg-gray-800/50 dark:text-gray-200 dark:placeholder:text-gray-500"
-          />
-          <SpeechButton
-            size="sm"
-            disabled={disabled}
-            className="absolute bottom-3 left-3"
-            onTranscription={(text) => {
-              const cur = valueRef.current ?? '';
-              onChange(cur + (cur ? ' ' : '') + text);
-            }}
           />
           <span className="absolute bottom-3 right-3 text-xs text-gray-300 dark:text-gray-600">
             {(value ?? '').length} {t('quiz.charCount')}
@@ -550,233 +469,24 @@ function QuestionCard({
   );
 }
 
-function ScoreBanner({
-  score,
-  total,
-  results,
-}: {
-  score: number;
-  total: number;
-  results: QuestionResult[];
-}) {
-  const { t } = useI18n();
-  const pct = total > 0 ? Math.round((score / total) * 100) : 0;
-  const correctCount = results.filter((r) => r.status === 'correct').length;
-  const incorrectCount = results.filter((r) => r.status === 'incorrect').length;
-
-  const color = pct >= 80 ? 'emerald' : pct >= 60 ? 'amber' : 'red';
-  const colorMap = {
-    emerald: {
-      bg: 'from-emerald-500 to-teal-500',
-      shadow: 'shadow-emerald-200/50 dark:shadow-emerald-900/50',
-      ring: 'bg-emerald-400/30',
-      text: t('quiz.excellent'),
-    },
-    amber: {
-      bg: 'from-amber-500 to-yellow-500',
-      shadow: 'shadow-amber-200/50 dark:shadow-amber-900/50',
-      ring: 'bg-amber-400/30',
-      text: t('quiz.keepGoing'),
-    },
-    red: {
-      bg: 'from-red-500 to-rose-500',
-      shadow: 'shadow-red-200/50 dark:shadow-red-900/50',
-      ring: 'bg-red-400/30',
-      text: t('quiz.needsReview'),
-    },
-  };
-  const c = colorMap[color];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className={cn('rounded-2xl p-6 bg-gradient-to-r text-white shadow-lg', c.bg, c.shadow)}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-white/80 text-sm font-medium">{c.text}</p>
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-4xl font-black">{score}</span>
-            <span className="text-white/60 text-lg">/ {total}</span>
-          </div>
-          <div className="flex gap-3 mt-3 text-xs">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {correctCount} {t('quiz.correct')}
-            </span>
-            <span className="flex items-center gap-1">
-              <XCircle className="w-3.5 h-3.5" /> {incorrectCount} {t('quiz.incorrect')}
-            </span>
-          </div>
-        </div>
-
-        {/* Percentage ring */}
-        <div className="relative w-20 h-20">
-          <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-            <circle
-              cx="40"
-              cy="40"
-              r="34"
-              fill="none"
-              stroke="rgba(255,255,255,0.2)"
-              strokeWidth="6"
-            />
-            <motion.circle
-              cx="40"
-              cy="40"
-              r="34"
-              fill="none"
-              stroke="white"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeDasharray={`${2 * Math.PI * 34}`}
-              initial={{ strokeDashoffset: 2 * Math.PI * 34 }}
-              animate={{ strokeDashoffset: 2 * Math.PI * 34 * (1 - pct / 100) }}
-              transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-lg font-black">{pct}%</span>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function QuizView({ questions, sceneId }: QuizViewProps) {
-  const { t, locale } = useI18n();
-
-  // Rehydrate submitted state from localStorage on first mount. Runs once.
-  const [initialSubmitted] = useState<SubmittedState>(() => readSubmittedState(sceneId));
-
-  const [phase, setPhase] = useState<Phase>(() => {
-    if (initialSubmitted?.kind === 'reviewing') return 'reviewing';
-    if (initialSubmitted?.kind === 'answering') return 'answering';
-    return 'not_started';
-  });
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>(
-    () => initialSubmitted?.answers ?? {},
-  );
-  const [results, setResults] = useState<QuestionResult[]>(() =>
-    initialSubmitted?.kind === 'reviewing' ? initialSubmitted.results : [],
-  );
-
-  // Draft cache for quiz answers, keyed by sceneId to isolate across classrooms
-  const {
-    cachedValue: cachedAnswers,
-    updateCache: updateAnswersCache,
-    clearCache: clearAnswersCache,
-  } = useDraftCache<Record<string, string | string[]>>({
-    key: draftKey(sceneId),
-  });
-
-  // Restore cached draft answers (only when there is no submitted state).
-  const [prevCachedAnswers, setPrevCachedAnswers] = useState(cachedAnswers);
-  if (cachedAnswers !== prevCachedAnswers) {
-    setPrevCachedAnswers(cachedAnswers);
-    if (
-      !initialSubmitted &&
-      cachedAnswers &&
-      Object.keys(cachedAnswers).length > 0 &&
-      phase === 'not_started'
-    ) {
-      setAnswers(cachedAnswers);
-      setPhase('answering');
-    }
-  }
-
+  const { t } = useI18n();
+  const [phase, setPhase] = useState<Phase>('not_started');
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const totalPoints = useMemo(
-    () => questions.reduce((sum, q) => sum + (q.points ?? 1), 0),
+    () => questions.reduce((sum, question) => sum + question.points, 0),
     [questions],
   );
-
-  const allAnswered = useMemo(() => {
-    return questions.every((q) => {
-      const a = answers[q.id];
-      if (!a) return false;
-      if (Array.isArray(a)) return a.length > 0;
-      return (a as string).trim().length > 0;
-    });
-  }, [questions, answers]);
-
-  const handleSetAnswer = useCallback(
-    (questionId: string, value: string | string[]) => {
-      setAnswers((prev) => {
-        const next = { ...prev, [questionId]: value };
-        updateAnswersCache(next);
-        return next;
-      });
-    },
-    [updateAnswersCache],
-  );
-
-  const handleSubmit = useCallback(() => {
-    setPhase('grading');
-    clearAnswersCache();
-    writeSubmittedAnswers(sceneId, answers);
-  }, [clearAnswersCache, answers, sceneId]);
-
-  // When entering grading phase, grade choice questions locally + call API for short-answer
-  useEffect(() => {
-    if (phase !== 'grading') return;
-    let cancelled = false;
-
-    (async () => {
-      // 1. Grade choice questions locally (instant)
-      const choiceResults = gradeChoiceQuestions(questions, answers);
-
-      // 2. Grade short-answer questions via AI API (parallel)
-      const shortAnswerQs = questions.filter(isShortAnswer);
-      const aiResults = await Promise.all(
-        shortAnswerQs.map((q) =>
-          gradeShortAnswerQuestion(q, (answers[q.id] as string) ?? '', locale),
-        ),
-      );
-
-      if (cancelled) return;
-
-      // 3. Merge results in original question order
-      const allResultsMap = new Map<string, QuestionResult>();
-      for (const r of [...choiceResults, ...aiResults]) {
-        allResultsMap.set(r.questionId, r);
-      }
-      const ordered = questions.map((q) => allResultsMap.get(q.id)!).filter(Boolean);
-
-      setResults(ordered);
-      setPhase('reviewing');
-      writeSubmittedResults(sceneId, ordered);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, questions, answers, locale, sceneId]);
-
-  const handleRetry = useCallback(() => {
-    setPhase('not_started');
-    setAnswers({});
-    setResults([]);
-    clearAnswersCache();
-    clearSubmitted(sceneId);
-  }, [clearAnswersCache, sceneId]);
-
-  const earnedScore = useMemo(() => results.reduce((sum, r) => sum + r.earned, 0), [results]);
-
-  const resultMap = useMemo(() => {
-    const map: Record<string, QuestionResult> = {};
-    results.forEach((r) => {
-      map[r.questionId] = r;
-    });
-    return map;
-  }, [results]);
+  const handleSetAnswer = useCallback((questionId: string, value: string | string[]) => {
+    setAnswers((current) => ({ ...current, [questionId]: value }));
+  }, []);
 
   return (
-    <div className="w-full h-full bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-900 overflow-hidden flex flex-col">
+    <div data-scene-id={sceneId} className="flex h-full w-full flex-col overflow-hidden bg-background">
       <AnimatePresence mode="wait">
-        {phase === 'not_started' && (
+        {phase === 'not_started' ? (
           <motion.div
             key="cover"
             initial={{ opacity: 0 }}
@@ -790,191 +500,59 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
               onStart={() => setPhase('answering')}
             />
           </motion.div>
-        )}
-
-        {phase === 'answering' && (
+        ) : (
           <motion.div
             key="answering"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="flex-1 flex flex-col min-h-0"
+            className="flex min-h-0 flex-1 flex-col"
           >
-            {/* Header bar */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur shrink-0">
-              <div className="flex items-center gap-2">
-                <PieChart className="w-4 h-4 text-violet-500" />
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  {t('quiz.answering')}
-                </span>
-                <span className="text-xs text-gray-400 ml-1">
-                  {
-                    Object.keys(answers).filter((k) => {
-                      const a = answers[k];
-                      if (Array.isArray(a)) return a.length > 0;
-                      return typeof a === 'string' && a.trim().length > 0;
-                    }).length
-                  }{' '}
-                  / {questions.length}
-                </span>
-              </div>
-              <button
-                onClick={handleSubmit}
-                disabled={!allAnswered}
-                className={cn(
-                  'px-4 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  allAnswered
-                    ? 'bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-sm hover:shadow-md hover:shadow-violet-200/50 dark:hover:shadow-violet-900/50 active:scale-[0.97]'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed',
-                )}
-              >
-                {t('quiz.submitAnswers')}
-              </button>
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-3">
+              <p className="text-sm font-semibold">{t('quiz.answering')}</p>
+              <Button type="button" disabled aria-describedby="quiz-submit-unavailable">
+                {t('quiz.submitUnavailable')}
+              </Button>
             </div>
-
-            {/* Questions */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {questions.map((q, i) => {
-                if (q.type === 'single') {
+            <p id="quiz-submit-unavailable" role="status" className="px-6 py-3 text-sm text-muted-foreground">
+              {t('quiz.submitUnavailableHint')}
+            </p>
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
+              {questions.map((question, index) => {
+                const value = answers[question.id];
+                if (question.type === 'single') {
                   return (
                     <SingleChoiceQuestion
-                      key={q.id}
-                      question={q}
-                      index={i}
-                      value={answers[q.id] as string | undefined}
-                      onChange={(v) => handleSetAnswer(q.id, v)}
+                      key={question.id}
+                      question={question}
+                      index={index}
+                      value={typeof value === 'string' ? value : undefined}
+                      onChange={(answer) => handleSetAnswer(question.id, answer)}
                     />
                   );
                 }
-                if (q.type === 'multiple') {
+                if (question.type === 'multiple') {
                   return (
                     <MultipleChoiceQuestion
-                      key={q.id}
-                      question={q}
-                      index={i}
-                      value={answers[q.id] as string[] | undefined}
-                      onChange={(v) => handleSetAnswer(q.id, v)}
+                      key={question.id}
+                      question={question}
+                      index={index}
+                      value={Array.isArray(value) ? value : undefined}
+                      onChange={(answer) => handleSetAnswer(question.id, answer)}
                     />
                   );
                 }
-                return (
-                  <ShortAnswerQuestion
-                    key={q.id}
-                    question={q}
-                    index={i}
-                    value={answers[q.id] as string | undefined}
-                    onChange={(v) => handleSetAnswer(q.id, v)}
-                  />
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-
-        {phase === 'grading' && (
-          <motion.div
-            key="grading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1 flex flex-col items-center justify-center gap-5"
-          >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
-            >
-              <Loader2 className="w-10 h-10 text-violet-500" />
-            </motion.div>
-            <div className="text-center">
-              <p className="text-base font-semibold text-gray-700 dark:text-gray-200">
-                {t('quiz.aiGrading')}
-              </p>
-              <p className="text-sm text-gray-400 mt-1">{t('quiz.aiGradingWait')}</p>
-            </div>
-            <div className="flex gap-1 mt-2">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full bg-violet-400"
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 1.2,
-                    delay: i * 0.2,
-                  }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {phase === 'reviewing' && (
-          <motion.div
-            key="reviewing"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex-1 flex flex-col min-h-0"
-          >
-            {/* Header bar */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur shrink-0">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  {t('quiz.quizReport')}
-                </span>
-              </div>
-              <button
-                onClick={handleRetry}
-                className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                {t('quiz.retry')}
-              </button>
-            </div>
-
-            {/* Results */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              <ScoreBanner score={earnedScore} total={totalPoints} results={results} />
-
-              {questions.map((q, i) => {
-                const r = resultMap[q.id];
-                if (q.type === 'single') {
+                if (question.type === 'short_answer') {
                   return (
-                    <SingleChoiceQuestion
-                      key={q.id}
-                      question={q}
-                      index={i}
-                      value={answers[q.id] as string | undefined}
-                      onChange={() => {}}
-                      disabled
-                      result={r}
+                    <ShortAnswerQuestion
+                      key={question.id}
+                      question={question}
+                      index={index}
+                      value={typeof value === 'string' ? value : undefined}
+                      onChange={(answer) => handleSetAnswer(question.id, answer)}
                     />
                   );
                 }
-                if (q.type === 'multiple') {
-                  return (
-                    <MultipleChoiceQuestion
-                      key={q.id}
-                      question={q}
-                      index={i}
-                      value={answers[q.id] as string[] | undefined}
-                      onChange={() => {}}
-                      disabled
-                      result={r}
-                    />
-                  );
-                }
-                return (
-                  <ShortAnswerQuestion
-                    key={q.id}
-                    question={q}
-                    index={i}
-                    value={answers[q.id] as string | undefined}
-                    onChange={() => {}}
-                    disabled
-                    result={r}
-                  />
-                );
+                return <p key={question.id} role="status">{t('quiz.unsupportedQuestion')}</p>;
               })}
             </div>
           </motion.div>

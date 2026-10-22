@@ -1,4 +1,4 @@
-import type { QuizQuestion } from '@/lib/types/stage';
+import type { QuizQuestion } from '@/lib/types/scene';
 
 export interface QuestionResult {
   questionId: string;
@@ -20,17 +20,17 @@ export function toArray(v: string | string[] | undefined): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
-export function isShortAnswer(q: QuizQuestion): boolean {
-  return q.type === 'short_answer' || (!q.hasAnswer && (!q.answer || q.answer.length === 0));
+export function isShortAnswer(q: QuizQuestion): q is Extract<QuizQuestion, { type: 'short_answer' }> {
+  return q.type === 'short_answer';
 }
 
-/** Grade choice questions locally. Returns results only for non-short-answer questions. */
+/** Pure comparison for server reuse with saved questions; callers must validate ownership and options. */
 export function gradeChoiceQuestions(
   questions: QuizQuestion[],
   answers: Record<string, string | string[]>,
 ): QuestionResult[] {
   return questions
-    .filter((q) => !isShortAnswer(q))
+    .filter((q) => q.type !== 'short_answer')
     .map((q) => {
       const pts = q.points ?? 1;
       const userAnswer = toArray(answers[q.id]);

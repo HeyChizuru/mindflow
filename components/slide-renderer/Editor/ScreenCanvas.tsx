@@ -5,25 +5,25 @@ import { HighlightOverlay } from './HighlightOverlay';
 import { SpotlightOverlay } from './SpotlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
 import { useSlideBackgroundStyle } from '@/lib/hooks/use-slide-background-style';
-import { useCanvasStore } from '@/lib/store';
+import { useCanvasStore } from '@/lib/store/canvas';
 import { useSceneSelector } from '@/lib/contexts/scene-context';
 import { findElementGeometry } from '@/lib/utils/geometry';
-import type { SlideContent } from '@/lib/types/stage';
-import type { PPTElement, SlideBackground } from '@/lib/types/slides';
+import type { SceneContent, SlideCanvas, SlideBackground } from '@/lib/types/scene';
 import type { PercentageGeometry } from '@/lib/types/action';
-import { useViewportSize } from './Canvas/hooks/useViewportSize';
+import { useViewportSize } from '../hooks/useViewportSize';
 import { useRef, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
 
+type SlideContent = Extract<SceneContent, { type: 'slide' }>;
+
 export function ScreenCanvas() {
   const canvasScale = useCanvasStore.use.canvasScale();
-  const elements = useSceneSelector<SlideContent, PPTElement[]>(
-    (content) => content.canvas.elements,
-  );
+  const canvas = useSceneSelector<SlideContent, SlideCanvas>((content) => content.canvas);
+  const elements = canvas.elements;
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Viewport size and positioning
-  const { viewportStyles } = useViewportSize(canvasRef);
+  const { viewportStyles } = useViewportSize(canvasRef, canvas);
 
   // Get background style
   const background = useSceneSelector<SlideContent, SlideBackground | undefined>(
@@ -42,10 +42,11 @@ export function ScreenCanvas() {
     const element = elements.find((el) => el.id === laserElementId);
     if (!element) return null;
     return findElementGeometry(
-      { type: 'slide', content: { canvas: { elements } } } as Record<string, unknown>,
+      { type: 'slide', content: { canvas } },
       laserElementId,
+      canvas.viewportSize,
     );
-  }, [laserElementId, elements]);
+  }, [laserElementId, elements, canvas]);
 
   // Compute zoom target geometry
   const zoomGeometry = useMemo<PercentageGeometry | null>(() => {
@@ -53,10 +54,11 @@ export function ScreenCanvas() {
     const element = elements.find((el) => el.id === zoomTarget.elementId);
     if (!element) return null;
     return findElementGeometry(
-      { type: 'slide', content: { canvas: { elements } } } as Record<string, unknown>,
+      { type: 'slide', content: { canvas } },
       zoomTarget.elementId,
+      canvas.viewportSize,
     );
-  }, [zoomTarget, elements]);
+  }, [zoomTarget, elements, canvas]);
 
   return (
     <div className="relative h-full w-full overflow-hidden select-none" ref={canvasRef}>

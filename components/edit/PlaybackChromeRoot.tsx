@@ -6,10 +6,10 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { SceneSidebar } from '@/components/stage/scene-sidebar';
 import { Header } from '@/components/header';
 import { CanvasArea } from '@/components/canvas/canvas-area';
-import { PlaybackEngine } from '@/lib/playback';
+import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
 import type { EngineMode, TriggerEvent } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
-import { createAudioPlayer } from '@/lib/utils/audio-player';
+import { Button } from '@/components/ui/button';
 import type { Scene } from '@/lib/types/scene';
 import type { SpeechAction } from '@/lib/types/action';
 
@@ -18,6 +18,7 @@ interface ScenePlaybackState {
   engineMode: EngineMode;
   lectureSpeech: string | null;
   discussionTrigger: TriggerEvent | null;
+  actionNotice: string | null;
   playbackCompleted: boolean;
 }
 
@@ -25,6 +26,7 @@ const EMPTY_PLAYBACK_STATE: Omit<ScenePlaybackState, 'sceneKey'> = {
   engineMode: 'idle',
   lectureSpeech: null,
   discussionTrigger: null,
+  actionNotice: null,
   playbackCompleted: false,
 };
 
@@ -52,12 +54,11 @@ export function PlaybackChromeRoot() {
   const engineRef = useRef<PlaybackEngine | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const presentationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [audioPlayer] = useState(() => createAudioPlayer());
   const scenePlaybackState =
     playbackState.sceneKey === sceneKey
       ? playbackState
       : { sceneKey, ...EMPTY_PLAYBACK_STATE };
-  const { engineMode, lectureSpeech, discussionTrigger, playbackCompleted } = scenePlaybackState;
+  const { engineMode, lectureSpeech, discussionTrigger, actionNotice, playbackCompleted } = scenePlaybackState;
 
   const updateScenePlaybackState = useCallback(
     (key: string, updates: Partial<Omit<ScenePlaybackState, 'sceneKey'>>) => {
@@ -82,6 +83,9 @@ export function PlaybackChromeRoot() {
         ?.text ?? null,
     [currentScene],
   );
+  const playbackView = computePlaybackView({
+    engineMode, lectureSpeech, discussionTrigger, playbackCompleted, idleText,
+  });
 
   useEffect(() => {
     engineRef.current?.stop();
@@ -92,18 +96,17 @@ export function PlaybackChromeRoot() {
     }
 
     const engine = new PlaybackEngine(
-      [currentScene],
-      new ActionEngine(audioPlayer),
-      audioPlayer,
+      currentScene,
+      new ActionEngine(),
       {
         onModeChange: (mode) => updateScenePlaybackState(sceneKey, { engineMode: mode }),
         onSpeechStart: (speech) => updateScenePlaybackState(sceneKey, { lectureSpeech: speech }),
         onProactiveShow: (trigger) => {
           updateScenePlaybackState(sceneKey, { discussionTrigger: trigger });
-          // A discussion action is shown as a prompt; it does not start an Agent session.
-          engineRef.current?.pause();
         },
         onProactiveHide: () => updateScenePlaybackState(sceneKey, { discussionTrigger: null }),
+        onActionUnavailable: (_action, message) =>
+          updateScenePlaybackState(sceneKey, { actionNotice: message }),
         onComplete: () => updateScenePlaybackState(sceneKey, { playbackCompleted: true }),
       },
     );
@@ -113,39 +116,41 @@ export function PlaybackChromeRoot() {
       engine.stop();
       if (engineRef.current === engine) engineRef.current = null;
     };
-  }, [audioPlayer, currentScene, sceneKey, updateScenePlaybackState]);
+  }, [currentScene, sceneKey, updateScenePlaybackState]);
 
   useEffect(
     () => () => {
       if (presentationTimerRef.current) clearTimeout(presentationTimerRef.current);
-      audioPlayer.destroy();
     },
-    [audioPlayer],
+    [],
   );
 
   const handlePlayPause = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
 
+    if (discussionTrigger) {
+      engine.skipDiscussion();
+      return;
+    }
     const mode = engine.getMode();
-    if (mode === 'playing' || mode === 'live') {
+    if (mode === 'playing') {
       engine.pause();
     } else if (mode === 'paused') {
       engine.resume();
     } else {
       if (playbackCompleted) {
-        updateScenePlaybackState(sceneKey, { playbackCompleted: false });
+        updateScenePlaybackState(sceneKey, { playbackCompleted: false, actionNotice: null });
         engine.start();
       }
       else engine.continuePlayback();
     }
-  }, [playbackCompleted, sceneKey, updateScenePlaybackState]);
+  }, [discussionTrigger, playbackCompleted, sceneKey, updateScenePlaybackState]);
 
   const handleContinueLecture = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
     engine.skipDiscussion();
-    if (engine.getMode() === 'paused') engine.resume();
   }, []);
 
   const handlePreviousScene = useCallback(() => {
@@ -265,6 +270,12 @@ export function PlaybackChromeRoot() {
           isCourseComplete={isCourseComplete}
         />
 
+        {actionNotice && (
+          <p role="status" className="border-t border-border px-6 py-2 text-sm text-muted-foreground">
+            {actionNotice}
+          </p>
+        )}
+
         {!isPresenting && (
           <section
             aria-label={t('classroom.subtitle')}
@@ -286,17 +297,17 @@ export function PlaybackChromeRoot() {
                     </p>
                   )}
                 </div>
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   onClick={handleContinueLecture}
-                  className="shrink-0 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
                 >
                   {t('classroom.continueLecture')}
-                </button>
+                </Button>
               </div>
             ) : (
               <p className="w-full max-w-4xl text-sm text-gray-700 dark:text-gray-200">
-                {lectureSpeech || idleText || t('classroom.subtitleWaiting')}
+                {playbackView.sourceText || t('classroom.subtitleWaiting')}
               </p>
             )}
           </section>

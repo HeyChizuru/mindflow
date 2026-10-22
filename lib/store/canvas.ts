@@ -25,7 +25,6 @@ interface CanvasState {
   canvasPercentage: number;
   viewportSize: number;
   viewportRatio: number;
-  canvasDragged: boolean;
 
   spotlightElementId: string;
   spotlightOptions: SpotlightOptions | null;
@@ -41,7 +40,6 @@ interface CanvasState {
   setCanvasPercentage: (percentage: number) => void;
   setViewportSize: (size: number) => void;
   setViewportRatio: (ratio: number) => void;
-  setCanvasDragged: (dragged: boolean) => void;
 
   setSpotlight: (elementId: string, options?: SpotlightOptions) => void;
   clearSpotlight: () => void;
@@ -64,7 +62,6 @@ const initialState = {
   canvasPercentage: 90,
   viewportSize: 1000,
   viewportRatio: 0.5625,
-  canvasDragged: false,
 
   spotlightElementId: '',
   spotlightOptions: null,
@@ -84,7 +81,6 @@ const useCanvasStoreBase = create<CanvasState>()((set) => ({
   setCanvasPercentage: (canvasPercentage) => set({ canvasPercentage }),
   setViewportSize: (viewportSize) => set({ viewportSize }),
   setViewportRatio: (viewportRatio) => set({ viewportRatio }),
-  setCanvasDragged: (canvasDragged) => set({ canvasDragged }),
 
   setSpotlight: (elementId, options = {}) =>
     set({
