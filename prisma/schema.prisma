@@ -72,7 +72,7 @@ model Stage {
   /// Phase 2 Critic 评审失败报告（revisionCount 超限时展示）
   lastCriticReport Json? @map("last_critic_report")
 
-  /// M4 播放/续生成指针；逻辑关联 scenes.id（待 scenes 表创建后补 FK）
+  /// 最近成功保存的播放场景；读取／保存时校验课堂归属与就绪情况，不作为生成进度
   currentSceneId String? @map("current_scene_id") @db.Uuid
 
   /// M3 讨论 Agent ID 列表（默认来自 config/agents.json）
@@ -92,6 +92,8 @@ model Stage {
 
   scenes Scene[]
 
+  quizSubmissions QuizSubmission[]
+
   @@map("stage")
 }
 
@@ -109,9 +111,42 @@ model Scene {
 
   stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
+  quizSubmissions QuizSubmission[]
+
+  @@unique([id, stageId])
   @@unique([stageId, outlineId])
   @@index([stageId, order])
   @@map("scenes")
+}
+
+/// 每场景每题只保存当前提交；判分结果与批改执行身份均归属于该提交
+model QuizSubmission {
+  stageId      String @map("stage_id") @db.Uuid
+  sceneId      String @map("scene_id") @db.Uuid
+  questionId   String @map("question_id")
+  submissionId String @map("submission_id") @db.Uuid
+  /// 仅在成功替换答案时递增；批改状态更新不替换答案版本
+  version Int @default(1)
+  answer Json
+  /// pending | processing | failed | completed；额外状态约束见对应迁移
+  status      String
+  result      Json?
+  failureCode String? @map("failure_code")
+
+  gradingRequestId String?   @map("grading_request_id") @db.Uuid
+  executionId      String?   @map("execution_id") @db.Uuid
+  gradingStartedAt DateTime? @map("grading_started_at") @db.Timestamptz(3)
+  gradingExpiresAt DateTime? @map("grading_expires_at") @db.Timestamptz(3)
+  gradedAt         DateTime? @map("graded_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  scene Scene @relation(fields: [sceneId, stageId], references: [id, stageId], onDelete: Cascade)
+
+  @@id([sceneId, questionId])
+  @@index([stageId])
+  @@map("quiz_submissions")
 }
 
 /// PDF 元数据（先存后解析：上传写 filename/storage_path，ingest 后补页数与全文）
