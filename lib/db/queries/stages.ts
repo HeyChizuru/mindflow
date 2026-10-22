@@ -20,6 +20,21 @@ export async function getStageById(id: string, db: Pick<PrismaClient, "stage"> =
   return db.stage.findUnique({ where: { id } });
 }
 
+/** Hold inside a transaction before checking or saving playback; compatible with scene FK inserts. */
+export async function lockStageForPlayback(id: string, db: Pick<PrismaClient, "$queryRaw">) {
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM stage WHERE id = ${id}::uuid FOR NO KEY UPDATE
+  `;
+  return rows.length === 1;
+}
+
+export async function updatePlaybackPosition(id: string, sceneId: string, db: Pick<PrismaClient, "stage">) {
+  return db.stage.update({
+    where: { id }, data: { currentSceneId: sceneId },
+    select: { id: true, currentSceneId: true },
+  });
+}
+
 export async function confirmStageOutlines(
   id: string,
   input: ConfirmOutlinesBody,

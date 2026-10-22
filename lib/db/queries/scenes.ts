@@ -4,8 +4,9 @@ import type { CreateSceneInput } from "@/lib/types/scene";
 import { createSceneSchema, sceneSchema } from "@/lib/validators/scenes";
 
 type SceneDatabase = Pick<PrismaClient, "scene">;
+type SceneRow = NonNullable<Awaited<ReturnType<PrismaClient["scene"]["findUnique"]>>>;
 
-function toScene(row: NonNullable<Awaited<ReturnType<PrismaClient["scene"]["findUnique"]>>>) {
+function toScene(row: SceneRow) {
   return sceneSchema.parse({
     ...row,
     createdAt: row.createdAt.toISOString(),
@@ -25,5 +26,19 @@ export async function getSceneByOutline(stageId: string, outlineId: string, db: 
 
 export async function getScenesByStageId(stageId: string, db: SceneDatabase = prisma) {
   const rows = await db.scene.findMany({ where: { stageId }, orderBy: { order: "asc" } });
+  return rows.map(toScene);
+}
+
+/** Protect the first and target scenes from changes until the position transaction commits. */
+export async function lockScenesForPlayback(
+  stageId: string, sceneId: string, firstOutlineId: string, db: Pick<PrismaClient, "$queryRaw">,
+) {
+  const rows = await db.$queryRaw<SceneRow[]>`
+    SELECT id, stage_id AS "stageId", outline_id AS "outlineId", type, title, "order", content, actions,
+      created_at AS "createdAt", updated_at AS "updatedAt"
+    FROM scenes
+    WHERE stage_id = ${stageId}::uuid AND (id = ${sceneId}::uuid OR outline_id = ${firstOutlineId})
+    ORDER BY id FOR SHARE
+  `;
   return rows.map(toScene);
 }

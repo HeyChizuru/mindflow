@@ -75,6 +75,25 @@ export async function getQuizSubmission(key: QuizQuestionKey, db: QuizDatabase =
   return first(rows);
 }
 
+/** Read execution expiry after acquiring the lock, so waiting cannot leave a stale expiry flag. */
+export async function getLockedQuizSubmission(key: QuizQuestionKey, db: QuizDatabase) {
+  const parsed = quizQuestionKeySchema.parse(key);
+  await db.$queryRaw(Prisma.sql`
+    SELECT q.scene_id FROM quiz_submissions AS q WHERE ${questionWhere(parsed)} FOR UPDATE
+  `);
+  return getQuizSubmission(parsed, db);
+}
+
+/** Scheduling hint only; completion and expiry writes still enforce the database deadline atomically. */
+export async function getQuizGradingRemainingMs(input: QuizExecutionKey, db: QuizDatabase = prisma) {
+  const key = quizExecutionKeySchema.parse(input);
+  const rows = await db.$queryRaw<{ remainingMs: number }[]>(Prisma.sql`
+    SELECT GREATEST(0, EXTRACT(EPOCH FROM (q.grading_expires_at - clock_timestamp())) * 1000)::double precision AS "remainingMs"
+    FROM quiz_submissions AS q WHERE ${executionWhere(key)} AND q.status = 'processing'
+  `);
+  return rows[0]?.remainingMs ?? null;
+}
+
 export async function getQuizSubmissionsByStageId(stageId: string, db: QuizDatabase = prisma) {
   const id = classroomIdSchema.parse(stageId);
   const rows = await db.$queryRaw<QuizRow[]>(Prisma.sql`
