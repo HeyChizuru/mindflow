@@ -10,8 +10,8 @@ export async function insertDocument(data: {
 }
 
 /** 取该课堂的第一份文档（M1 每课堂最多一份 PDF） */
-export async function getDocumentByStageId(stageId: string) {
-  return prisma.document.findFirst({ where: { stageId } });
+export async function getDocumentByStageId(stageId: string, db: Pick<PrismaClient, "document"> = prisma) {
+  return db.document.findFirst({ where: { stageId } });
 }
 
 /**

@@ -72,7 +72,7 @@ export async function validateSceneGenerationInput(input: SceneContentGeneration
   };
 }
 
-function validateSavedScene(scene: Scene, stageId: string, outline: SceneOutline) {
+export function validateSavedScene(scene: Scene, stageId: string, outline: SceneOutline) {
   const result = sceneSchema.parse(scene);
   if (result.stageId !== stageId || result.outlineId !== outline.id || result.type !== outline.type
     || result.title !== outline.title || result.order !== outline.order) {

@@ -16,8 +16,8 @@ export async function insertStage(data: {
 }
 
 /** 按主键取课堂；不存在返回 null */
-export async function getStageById(id: string) {
-  return prisma.stage.findUnique({ where: { id } });
+export async function getStageById(id: string, db: Pick<PrismaClient, "stage"> = prisma) {
+  return db.stage.findUnique({ where: { id } });
 }
 
 export async function confirmStageOutlines(

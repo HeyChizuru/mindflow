@@ -63,7 +63,7 @@ export async function createStage(
   });
 
   if (!hasPdf) {
-    return toResponse(stage);
+    return toStageResponse(stage);
   }
 
   try {
@@ -80,7 +80,7 @@ export async function createStage(
       storagePath,
     });
 
-    return toResponse(stage, {
+    return toStageResponse(stage, {
       id: document.id,
       filename: document.filename,
       storagePath: document.storagePath,
@@ -103,7 +103,7 @@ export async function getStage(stageId: string): Promise<CreateStageResponse> {
   }
 
   const document = await getDocumentByStageId(id);
-  return toResponse(
+  return toStageResponse(
     stage,
     document
       ? {
@@ -138,7 +138,7 @@ export async function removeStage(stageId: string): Promise<DeleteStageResponse>
 }
 
 /** 把课堂行映射为 DTO。昵称、背景为空则不出现在 requirements 里 */
-function toResponse(
+export function toStageResponse(
   stage: {
     id: string;
     name: string;
