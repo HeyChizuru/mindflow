@@ -5,7 +5,7 @@ title: 课堂播放与测验
 spec_status: accepted
 delivery_status: verified
 requires: [确认大纲并生成首屏]
-governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005]
+governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005, adr-006]
 related_to: [后台续生成, 课堂讨论, 配置模型]
 supersedes: []
 acceptance: [CP-1, CP-2, CP-3, CP-4, CP-5, CP-6, CP-7, CP-8, CP-9, CP-10, CP-11, CP-12, CP-13]
@@ -77,5 +77,5 @@ acceptance: [CP-1, CP-2, CP-3, CP-4, CP-5, CP-6, CP-7, CP-8, CP-9, CP-10, CP-11,
 ## 关系
 
 - 硬能力依赖：[[确认大纲并生成首屏]]。本单元播放该单元保存的完整首场。
-- 治理约束：[[intent]]、[[adr-001]]、[[adr-002]]、[[adr-003]]、[[adr-004]]、[[adr-005]]。
+- 治理约束：[[intent]]、[[adr-001]]、[[adr-002]]、[[adr-003]]、[[adr-004]]、[[adr-005]]、[[adr-006]]。
 - 相关：[[后台续生成]]、[[课堂讨论]]、[[配置模型]]。后续场景生成、真实讨论与设置界面不在本单元内；这些单元尚未交付时，已有完整场景仍可用于播放与测验。

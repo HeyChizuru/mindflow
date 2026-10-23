@@ -2,7 +2,7 @@
 feature_id: 课堂播放与测验
 artifact: tasks
 implements: [CP-1, CP-5, CP-6, CP-7, CP-8, CP-9, CP-10, CP-11, CP-12, CP-13]
-governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005]
+governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005, adr-006]
 ---
 
 # 阶段三：后端适配
