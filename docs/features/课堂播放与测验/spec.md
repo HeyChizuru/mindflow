@@ -2,8 +2,8 @@
 feature_id: 课堂播放与测验
 artifact: spec
 title: 课堂播放与测验
-spec_status: draft
-delivery_status: planned
+spec_status: accepted
+delivery_status: verified
 requires: [确认大纲并生成首屏]
 governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005]
 related_to: [后台续生成, 课堂讨论, 配置模型]

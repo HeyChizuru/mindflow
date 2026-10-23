@@ -42,7 +42,7 @@ flowchart LR
 | ---------- | ----------- | --------------- | --------- | ----------------------------------------------------------------------- |
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
 | 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md)                                        |
-| 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
+| 课堂播放与测验    | accepted    | verified        | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
 | 课堂讨论       | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md)                                         |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
 | 配置模型       | draft       | planned         | —         | [spec](./features/配置模型/spec.md)                                         |
