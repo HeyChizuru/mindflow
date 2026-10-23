@@ -1,4 +1,5 @@
 'use client';
+import { useSanitizedSlideHtml } from '@/lib/utils/sanitize-slide-html';
 
 import type { PPTTextElement } from '@/lib/types/slides';
 import { useElementShadow } from '../hooks/useElementShadow';
@@ -16,6 +17,7 @@ export interface BaseTextElementProps {
 export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
 
+  const safeHtml = useSanitizedSlideHtml(elementInfo.content);
   return (
     <div
       className="base-element-text absolute"
@@ -54,7 +56,7 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
           />
           <div
             className={`text ProseMirror-static relative ${target === 'thumbnail' ? 'pointer-events-none' : ''}`}
-            dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+            dangerouslySetInnerHTML={{ __html: safeHtml }}
           />
         </div>
       </div>

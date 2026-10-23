@@ -1,125 +1,69 @@
 'use client';
 
+import { useRef } from 'react';
 import { ScreenElement } from './ScreenElement';
-import { HighlightOverlay } from './HighlightOverlay';
 import { SpotlightOverlay } from './SpotlightOverlay';
+import { HighlightOverlay } from './HighlightOverlay';
 import { LaserOverlay } from './LaserOverlay';
+import { TeachingFeedback } from '@/components/stage/teaching-feedback';
 import { useSlideBackgroundStyle } from '@/lib/hooks/use-slide-background-style';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSceneSelector } from '@/lib/contexts/scene-context';
-import { findElementGeometry } from '@/lib/utils/geometry';
-import type { SceneContent, SlideCanvas, SlideBackground } from '@/lib/types/scene';
-import type { PercentageGeometry } from '@/lib/types/action';
 import { useViewportSize } from '../hooks/useViewportSize';
-import { useRef, useMemo } from 'react';
-import { AnimatePresence } from 'motion/react';
+import type { SceneContent, SlideElement } from '@/lib/types/scene';
+import type { TeachingEffect } from '@/components/stage/classroom-view-types';
+import type { PercentageGeometry } from '@/lib/types/action';
 
 type SlideContent = Extract<SceneContent, { type: 'slide' }>;
-
-export function ScreenCanvas() {
-  const canvasScale = useCanvasStore.use.canvasScale();
-  const canvas = useSceneSelector<SlideContent, SlideCanvas>((content) => content.canvas);
-  const elements = canvas.elements;
+function geometry(element: SlideElement | undefined, width: number, height: number): PercentageGeometry | null {
+  if (!element) return null;
+  const angle = (element.rotate ?? 0) * Math.PI / 180;
+  const w = Math.abs(element.width * Math.cos(angle)) + Math.abs(element.height * Math.sin(angle));
+  const h = Math.abs(element.width * Math.sin(angle)) + Math.abs(element.height * Math.cos(angle));
+  const centerX = (element.left + element.width / 2) / width * 100;
+  const centerY = (element.top + element.height / 2) / height * 100;
+  return { x: centerX - w / width * 50, y: centerY - h / height * 50, w: w / width * 100, h: h / height * 100, centerX, centerY };
+}
+export function ScreenCanvas({ effects }: { effects?: TeachingEffect[] }) {
+  const canvas = useSceneSelector<SlideContent, SlideContent['canvas']>((content) => content.canvas);
   const canvasRef = useRef<HTMLDivElement>(null);
-
-  // Viewport size and positioning
-  const { viewportStyles } = useViewportSize(canvasRef, canvas);
-
-  // Get background style
-  const background = useSceneSelector<SlideContent, SlideBackground | undefined>(
-    (content) => content.canvas.background,
-  );
-  const { backgroundStyle } = useSlideBackgroundStyle(background);
-
-  // Get visual effect state
-  const laserElementId = useCanvasStore.use.laserElementId();
-  const laserOptions = useCanvasStore.use.laserOptions();
-  const zoomTarget = useCanvasStore.use.zoomTarget();
-
-  // Compute laser pointer geometry
-  const laserGeometry = useMemo<PercentageGeometry | null>(() => {
-    if (!laserElementId) return null;
-    const element = elements.find((el) => el.id === laserElementId);
-    if (!element) return null;
-    return findElementGeometry(
-      { type: 'slide', content: { canvas } },
-      laserElementId,
-      canvas.viewportSize,
-    );
-  }, [laserElementId, elements, canvas]);
-
-  // Compute zoom target geometry
-  const zoomGeometry = useMemo<PercentageGeometry | null>(() => {
-    if (!zoomTarget) return null;
-    const element = elements.find((el) => el.id === zoomTarget.elementId);
-    if (!element) return null;
-    return findElementGeometry(
-      { type: 'slide', content: { canvas } },
-      zoomTarget.elementId,
-      canvas.viewportSize,
-    );
-  }, [zoomTarget, elements, canvas]);
-
-  return (
-    <div className="relative h-full w-full overflow-hidden select-none" ref={canvasRef}>
-      <div
-        className="absolute shadow-[0_0_0_1px_rgba(0,0,0,0.01),0_0_12px_0_rgba(0,0,0,0.1)] rounded-lg overflow-hidden transition-transform duration-700"
-        style={{
-          width: `${viewportStyles.width * canvasScale}px`,
-          height: `${viewportStyles.height * canvasScale}px`,
-          left: `${viewportStyles.left}px`,
-          top: `${viewportStyles.top}px`,
-          ...(zoomTarget && zoomGeometry
-            ? {
-              transform: `scale(${zoomTarget.scale})`,
-              transformOrigin: `${zoomGeometry.centerX}% ${zoomGeometry.centerY}%`,
-            }
-            : {}),
-        }}
-      >
-        {/* Background layer */}
-        <div
-          className="w-full h-full bg-position-center rounded-lg"
-          style={{ ...backgroundStyle }}
-        ></div>
-
-        {/* Content layer - scaled */}
-        <div
-          className="absolute top-0 left-0 origin-top-left"
-          style={{
-            width: `${viewportStyles.width}px`,
-            height: `${viewportStyles.height}px`,
-            transform: `scale(${canvasScale})`,
-          }}
-        >
-          {elements.map((element, index) => (
-            <ScreenElement key={element.id} elementInfo={element} elementIndex={index + 1} />
-          ))}
-
-          {/* Highlight overlay - stacked above elements */}
-          <HighlightOverlay />
-        </div>
-
-        {/* Spotlight overlay - covers the entire slide, positioned via DOM measurement */}
-        <SpotlightOverlay />
-
-        {/* Visual effects layer - outside the scale layer, using percentage coordinates */}
-        <div className="absolute inset-0 pointer-events-none" style={{ padding: '5%' }}>
-          <div className="relative w-full h-full">
-            {/* Laser pointer overlay */}
-            <AnimatePresence>
-              {laserElementId && laserGeometry && (
-                <LaserOverlay
-                  key={`laser-${laserElementId}`}
-                  geometry={laserGeometry}
-                  color={laserOptions?.color}
-                  duration={laserOptions?.duration}
-                />
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+  const { scale, viewportStyles } = useViewportSize(canvasRef, canvas);
+  const { backgroundStyle } = useSlideBackgroundStyle(canvas.background);
+  const store = useCanvasStore();
+  const spotlight = effects === undefined ? store.spotlightElementId : effects.find((effect) => effect.type === 'spotlight')?.elementId;
+  const laser = effects === undefined ? store.laserElementId : effects.find((effect) => effect.type === 'laser')?.elementId;
+  const highlights = effects === undefined ? store.highlightedElementIds : effects.filter((effect) => effect.type === 'widget_highlight').map((effect) => effect.target);
+  const annotations = (effects ?? []).filter((effect) => effect.type === 'widget_annotation');
+  const unlocated = (effects ?? []).filter((effect) => 'target' in effect ? !canvas.elements.some((item) => item.id === effect.target) : 'elementId' in effect ? !canvas.elements.some((item) => item.id === effect.elementId) : false);
+  const w = canvas.viewportSize, h = w * canvas.viewportRatio;
+  return <div ref={canvasRef} className="relative size-full overflow-hidden" aria-label="幻灯片">
+    <div className="absolute isolate overflow-hidden rounded-lg shadow-lg" data-testid="slide-canvas"
+      style={{ left: viewportStyles.left, top: viewportStyles.top, width: w * scale, height: h * scale }}>
+      <div className="absolute origin-top-left" style={{ width: w, height: h, transform: 'scale(' + scale + ')', backgroundColor: canvas.theme.backgroundColor, ...backgroundStyle }}>
+        {canvas.elements.map((element, index) => <ScreenElement key={element.id} elementInfo={element} elementIndex={index + 1} />)}
+        <div className="pointer-events-none absolute inset-0 z-[100]"><HighlightOverlay elements={canvas.elements} targetIds={highlights} /></div>
+      </div>
+      <div className="pointer-events-none absolute inset-0 z-[101]">
+        <SpotlightOverlay geometry={geometry(canvas.elements.find((item) => item.id === spotlight), w, h)} />
+        {laser && geometry(canvas.elements.find((item) => item.id === laser), w, h) &&
+          <LaserOverlay geometry={geometry(canvas.elements.find((item) => item.id === laser), w, h)!} />}
       </div>
     </div>
-  );
+    <div className="pointer-events-none absolute inset-0 z-[102]">
+      {annotations.map((effect) => {
+        const element = canvas.elements.find((item) => item.id === effect.target);
+        if (!element) return null;
+        const box = geometry(element, w, h)!;
+        return <div key={effect.id} className="absolute max-h-32 w-64 max-w-[85%] overflow-y-auto"
+          style={{ left: Math.min(viewportStyles.left + (box.x + box.w / 2) / 100 * w * scale, Math.max(8, w * scale + viewportStyles.left - 256)),
+            top: Math.max(0, Math.min(viewportStyles.top + (box.y + box.h) / 100 * h * scale, viewportStyles.top + h * scale - 95)) }}>
+          <TeachingFeedback effects={[effect]} targetId={effect.target} />
+        </div>;
+      })}
+    </div>
+    <div className="absolute left-3 right-3 top-3 z-[103] flex flex-col gap-1">
+      <TeachingFeedback effects={effects} />
+      {unlocated.length > 0 && <p role="status" className="rounded border bg-background p-2 text-sm">教学效果未找到对应元素，其他内容仍可观看。</p>}
+    </div>
+  </div>;
 }

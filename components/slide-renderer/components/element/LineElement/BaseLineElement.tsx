@@ -7,7 +7,7 @@ import { useElementShadow } from '../hooks/useElementShadow';
 import { LinePointMarker } from './LinePointMarker';
 
 export interface BaseLineElementProps {
-  elementInfo: PPTLineElement;
+  elementInfo: PPTLineElement & { rotate?: number };
   animate?: boolean;
 }
 
@@ -89,6 +89,9 @@ export function BaseLineElement({ elementInfo, animate }: BaseLineElementProps) 
       style={{
         top: `${elementInfo.top}px`,
         left: `${elementInfo.left}px`,
+        width: svgWidth,
+        height: svgHeight,
+        transform: 'rotate(' + (elementInfo.rotate ?? 0) + 'deg)',
       }}
     >
       <div

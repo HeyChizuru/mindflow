@@ -64,12 +64,14 @@ export class PlaybackEngine {
       clearTimeout(this.speechTimer);
       this.speechTimer = null;
     }
+    this.actionEngine.pauseEffects();
     this.setMode('paused');
   }
 
   resume(): void {
     if (this.mode !== 'paused' || this.currentTrigger) return;
     this.setMode('playing');
+    this.actionEngine.resumeEffects();
     if (this.pendingTrigger) this.scheduleDiscussionTrigger();
     else if (this.speechTimerRemaining > 0) this.scheduleReadingTimer();
     else this.processNext();
@@ -94,10 +96,33 @@ export class PlaybackEngine {
     if (!this.currentTrigger) return;
     this.currentTrigger = null;
     this.callbacks.onProactiveHide?.();
+    this.actionEngine.resumeEffects();
     this.setMode('playing');
     this.processNext();
   }
 
+  /** Finish the current reading interval; every intervening teaching action still runs. */
+  nextSegment(): void {
+    if (this.currentTrigger) return;
+    if (this.speechTimer) clearTimeout(this.speechTimer);
+    this.speechTimer = null;
+    this.speechTimerRemaining = 0;
+    if (this.pendingTrigger) {
+      if (this.triggerDelayTimer) clearTimeout(this.triggerDelayTimer);
+      this.triggerDelayTimer = null;
+      this.triggerDelayRemaining = 0;
+      this.currentTrigger = this.pendingTrigger;
+      this.pendingTrigger = null;
+      this.actionEngine.pauseEffects();
+      this.setMode('paused');
+      this.callbacks.onProactiveShow?.(this.currentTrigger);
+      return;
+    }
+    this.callbacks.onSpeechEnd?.();
+    this.actionEngine.resumeEffects();
+    this.setMode('playing');
+    this.processNext();
+  }
   private setMode(mode: EngineMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
@@ -122,6 +147,7 @@ export class PlaybackEngine {
       if (this.mode !== 'playing' || !this.pendingTrigger) return;
       this.currentTrigger = this.pendingTrigger;
       this.pendingTrigger = null;
+      this.actionEngine.pauseEffects();
       this.setMode('paused');
       this.callbacks.onProactiveShow?.(this.currentTrigger);
     }, this.triggerDelayRemaining);

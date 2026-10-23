@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 import type { SceneContent, SlideElement } from '@/lib/types/scene';
 import type { ChartData, ChartType, LinePoint } from '@/lib/types/slides';
 import { useSceneSelector } from '@/lib/contexts/scene-context';
@@ -10,105 +10,50 @@ import { BaseLineElement } from '../components/element/LineElement/BaseLineEleme
 import { BaseChartElement } from '../components/element/ChartElement/BaseChartElement';
 import { BaseLatexElement } from '../components/element/LatexElement/BaseLatexElement';
 
-interface ScreenElementProps {
-  readonly elementInfo: SlideElement;
-  readonly elementIndex: number;
-  readonly animate?: boolean;
+class ElementBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function readChartData(value: Record<string, unknown>): ChartData | null {
+function chartData(value: Record<string, unknown>): ChartData | null {
   const { labels, legends, series } = value;
-  if (!isStringArray(labels) || !isStringArray(legends) || !Array.isArray(series)) return null;
-  if (!series.every((row): row is number[] =>
-    Array.isArray(row) && row.every((item) => typeof item === 'number' && Number.isFinite(item)))) {
-    return null;
-  }
+  if (!Array.isArray(labels) || !labels.every((v) => typeof v === 'string') ||
+    !Array.isArray(legends) || !legends.every((v) => typeof v === 'string') ||
+    !Array.isArray(series) || series.length === 0 || !series.every((row) => Array.isArray(row) && row.length > 0 && row.every((n) => typeof n === 'number' && Number.isFinite(n)))) return null;
   return { labels, legends, series };
 }
+function isChartType(value: string): value is ChartType { return ['bar', 'column', 'line', 'pie', 'ring', 'area', 'radar', 'scatter'].includes(value); }
+function isPoint(value: string): value is LinePoint { return ['', 'arrow', 'dot'].includes(value); }
 
-function isChartType(value: string): value is ChartType {
-  return ['bar', 'column', 'line', 'pie', 'ring', 'area', 'radar', 'scatter'].includes(value);
-}
-
-function isLinePoint(value: string): value is LinePoint {
-  return value === '' || value === 'arrow' || value === 'dot';
-}
-
-export function ScreenElement({ elementInfo, elementIndex, animate }: ScreenElementProps) {
-  const theme = useSceneSelector<SceneContent, { fontColor: string; fontName: string }>(
-    (content) => content.type === 'slide'
-      ? content.canvas.theme
-      : { fontColor: '#333333', fontName: 'Microsoft YaHei' },
-  );
-
-  // The placeholder occupies only this element's saved bounds and stays transparent.
-  const unavailable = (message: string) => (
-    <div
-      role="status"
-      className="element-content absolute overflow-hidden border border-dashed border-current text-sm text-muted-foreground"
-      style={{
-        left: elementInfo.left,
-        top: elementInfo.top,
-        width: elementInfo.width,
-        height: elementInfo.height,
-        transform: `rotate(${elementInfo.rotate ?? 0}deg)`,
-      }}
-    >
-      {message}
-    </div>
-  );
-
-  const renderElement = (): ReactNode => {
+export function ScreenElement({ elementInfo, elementIndex, animate }: { elementInfo: SlideElement; elementIndex: number; animate?: boolean }) {
+  const theme = useSceneSelector<SceneContent, { fontColor: string; fontName: string }>((content) => content.type === 'slide' ? content.canvas.theme : { fontColor: '#333', fontName: 'sans-serif' });
+  const unavailable = (message: string) => <div role="status" className="element-content absolute overflow-hidden border border-dashed text-sm"
+    style={{ left: elementInfo.left, top: elementInfo.top, width: elementInfo.width, height: elementInfo.height, transform: 'rotate(' + (elementInfo.rotate ?? 0) + 'deg)' }}>{message}</div>;
+  function renderElement(): ReactNode {
     const rotate = elementInfo.rotate ?? 0;
     switch (elementInfo.type) {
-      case 'text':
-        return <BaseTextElement elementInfo={{ ...elementInfo, rotate }} />;
+      case 'text': return <BaseTextElement elementInfo={{ ...elementInfo, rotate }} />;
       case 'shape': {
-        const viewBox = elementInfo.viewBox;
-        if (typeof viewBox === 'string') return unavailable('此形状的坐标格式暂无法显示');
-        return <BaseShapeElement elementInfo={{ ...elementInfo, rotate, viewBox }} />;
+        const box = typeof elementInfo.viewBox === 'string' ? elementInfo.viewBox.trim().split(/[\s,]+/).map(Number) : elementInfo.viewBox;
+        const viewBox: [number, number] = box.length === 4 ? [box[2], box[3]] : [box[0], box[1]];
+        if (box.some((n) => !Number.isFinite(n)) || ![2, 4].includes(box.length) || viewBox.some((n) => n <= 0)) return unavailable('形状坐标无效');
+        return <BaseShapeElement elementInfo={{ ...elementInfo, rotate, viewBox }} viewBoxOrigin={box.length === 4 ? [box[0], box[1]] : [0, 0]} />;
       }
-      case 'line': {
-        const { style, points } = elementInfo;
-        if ((style !== 'solid' && style !== 'dashed' && style !== 'dotted') ||
-            !isLinePoint(points[0]) || !isLinePoint(points[1])) {
-          return unavailable('此线条的样式暂无法显示');
-        }
-        return (
-          <BaseLineElement
-            elementInfo={{ ...elementInfo, style, points: [points[0], points[1]] }}
-            animate={animate}
-          />
-        );
-      }
+      case 'line':
+        if (!['solid', 'dashed', 'dotted'].includes(elementInfo.style) || !isPoint(elementInfo.points[0]) || !isPoint(elementInfo.points[1])) return unavailable('线条样式暂无法显示');
+        return <BaseLineElement elementInfo={{ ...elementInfo, style: elementInfo.style as 'solid' | 'dashed' | 'dotted', points: [elementInfo.points[0], elementInfo.points[1]] }} animate={animate} />;
       case 'chart': {
-        const data = readChartData(elementInfo.data);
-        const chartType = elementInfo.chartType;
-        if (!data || !isChartType(chartType)) return unavailable('此图表的格式暂无法显示');
-        return <BaseChartElement elementInfo={{ ...elementInfo, rotate, data, chartType }} />;
+        const data = chartData(elementInfo.data);
+        if (!data || !isChartType(elementInfo.chartType)) return unavailable('图表格式暂无法显示');
+        return <BaseChartElement elementInfo={{ ...elementInfo, rotate, data, chartType: elementInfo.chartType }} />;
       }
-      case 'latex':
-        return <BaseLatexElement elementInfo={{ ...elementInfo, rotate }} />;
-      case 'image':
-        return unavailable('图片暂无法显示');
-      case 'video':
-        return unavailable('暂不支持视频播放');
-      default:
-        return unavailable('暂不支持此元素');
+      case 'latex': return <BaseLatexElement elementInfo={{ ...elementInfo, rotate }} />;
+      case 'image': return unavailable('图片暂无法显示');
+      case 'video': return unavailable('暂不支持视频播放');
+      default: return unavailable('暂不支持此元素');
     }
-  };
-
-  return (
-    <div
-      className="screen-element absolute inset-0 pointer-events-none"
-      id={`screen-element-${elementInfo.id}`}
-      style={{ zIndex: elementIndex, color: theme.fontColor, fontFamily: theme.fontName }}
-    >
-      {renderElement()}
-    </div>
-  );
+  }
+  return <div className="screen-element pointer-events-none absolute inset-0" id={'screen-element-' + elementInfo.id} style={{ zIndex: elementIndex, color: theme.fontColor, fontFamily: theme.fontName }}>
+    <ElementBoundary key={JSON.stringify(elementInfo)} fallback={unavailable('此元素暂无法显示，其他内容仍可观看')}>{renderElement()}</ElementBoundary>
+  </div>;
 }

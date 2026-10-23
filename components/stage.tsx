@@ -2,7 +2,6 @@
 
 import { PlaybackChromeRoot } from '@/components/edit/PlaybackChromeRoot';
 
-/** Classroom playback shell. Editing and interactive hosts are outside this feature. */
-export function Stage() {
-  return <PlaybackChromeRoot />;
+export function Stage({ stageId }: { stageId: string }) {
+  return <PlaybackChromeRoot stageId={stageId} />;
 }

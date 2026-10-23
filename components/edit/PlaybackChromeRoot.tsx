@@ -1,318 +1,129 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useStageStore, PENDING_SCENE_ID } from '@/lib/store/stage';
-import { useI18n } from '@/lib/hooks/use-i18n';
-import { SceneSidebar } from '@/components/stage/scene-sidebar';
-import { Header } from '@/components/header';
-import { CanvasArea } from '@/components/canvas/canvas-area';
-import { PlaybackEngine, computePlaybackView } from '@/lib/playback';
-import type { EngineMode, TriggerEvent } from '@/lib/playback';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ClassroomView } from '@/components/stage/classroom-view';
+import type { PlaybackDisplay, TeachingEffect } from '@/components/stage/classroom-view-types';
+import { useClassroom } from '@/lib/hooks/use-classroom';
+import { PlaybackEngine } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
-import { Button } from '@/components/ui/button';
-import type { Scene } from '@/lib/types/scene';
-import type { SpeechAction } from '@/lib/types/action';
 
-interface ScenePlaybackState {
-  sceneKey: string | null;
-  engineMode: EngineMode;
-  lectureSpeech: string | null;
-  discussionTrigger: TriggerEvent | null;
-  actionNotice: string | null;
-  playbackCompleted: boolean;
-}
+type PlayingState = { sceneId: string; run: number; phase: PlaybackDisplay; subtitle: string | null;
+  discussion: { topic: string; prompt: string } | null; effects: TeachingEffect[]; actionNotice: string | null };
 
-const EMPTY_PLAYBACK_STATE: Omit<ScenePlaybackState, 'sceneKey'> = {
-  engineMode: 'idle',
-  lectureSpeech: null,
-  discussionTrigger: null,
-  actionNotice: null,
-  playbackCompleted: false,
-};
-
-export function PlaybackChromeRoot() {
-  const { t } = useI18n();
-  const {
-    scenes,
-    outlines,
-    generatingOutlines,
-    currentSceneId,
-    setCurrentSceneId,
-    getCurrentScene,
-  } = useStageStore();
-  const currentScene: Scene | null = getCurrentScene();
-  const sceneKey = currentScene?.id ?? currentSceneId ?? PENDING_SCENE_ID;
-
+export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
+  const { session, state } = useClassroom(stageId);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [playbackState, setPlaybackState] = useState<ScenePlaybackState>({
-    sceneKey: null,
-    ...EMPTY_PLAYBACK_STATE,
-  });
   const [isPresenting, setIsPresenting] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
-
+  const [playing, setPlaying] = useState<PlayingState | null>(null);
   const engineRef = useRef<PlaybackEngine | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const presentationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scenePlaybackState =
-    playbackState.sceneKey === sceneKey
-      ? playbackState
-      : { sceneKey, ...EMPTY_PLAYBACK_STATE };
-  const { engineMode, lectureSpeech, discussionTrigger, actionNotice, playbackCompleted } = scenePlaybackState;
+  const data = state.classroom;
+  const scene = data?.scenes.find((item) => item.id === state.sceneId) ?? null;
 
-  const updateScenePlaybackState = useCallback(
-    (key: string, updates: Partial<Omit<ScenePlaybackState, 'sceneKey'>>) => {
-      setPlaybackState((current) => ({
-        ...(current.sceneKey === key ? current : { sceneKey: key, ...EMPTY_PLAYBACK_STATE }),
-        ...updates,
+  useEffect(() => {
+    if (!scene) return;
+    let active = true;
+    const run = state.playbackRun, sceneId = scene.id;
+    const update = (patch: Partial<PlayingState>) => {
+      if (!active) return;
+      setPlaying((current) => ({
+        ...(current?.sceneId === sceneId && current.run === run ? current :
+          { sceneId, run, phase: 'idle' as const, subtitle: null, discussion: null, effects: [], actionNotice: null }),
+        ...patch,
       }));
-    },
-    [],
-  );
-
-  const currentSceneIndex =
-    currentSceneId === PENDING_SCENE_ID
-      ? scenes.length
-      : scenes.findIndex((scene) => scene.id === currentSceneId);
-  const isPendingScene = currentSceneId === PENDING_SCENE_ID;
-  const isCourseComplete =
-    outlines.length > 0 && scenes.length === outlines.length && generatingOutlines.length === 0;
-  const idleText = useMemo(
-    () =>
-      currentScene?.actions?.find((action): action is SpeechAction => action.type === 'speech')
-        ?.text ?? null,
-    [currentScene],
-  );
-  const playbackView = computePlaybackView({
-    engineMode, lectureSpeech, discussionTrigger, playbackCompleted, idleText,
-  });
-
-  useEffect(() => {
-    engineRef.current?.stop();
-
-    if (!currentScene?.actions?.length) {
-      engineRef.current = null;
-      return;
-    }
-
-    const engine = new PlaybackEngine(
-      currentScene,
-      new ActionEngine(),
-      {
-        onModeChange: (mode) => updateScenePlaybackState(sceneKey, { engineMode: mode }),
-        onSpeechStart: (speech) => updateScenePlaybackState(sceneKey, { lectureSpeech: speech }),
-        onProactiveShow: (trigger) => {
-          updateScenePlaybackState(sceneKey, { discussionTrigger: trigger });
-        },
-        onProactiveHide: () => updateScenePlaybackState(sceneKey, { discussionTrigger: null }),
-        onActionUnavailable: (_action, message) =>
-          updateScenePlaybackState(sceneKey, { actionNotice: message }),
-        onComplete: () => updateScenePlaybackState(sceneKey, { playbackCompleted: true }),
-      },
-    );
+    };
+    const engine = new PlaybackEngine(scene, new ActionEngine((effects) => update({ effects }), scene), {
+      onModeChange: (mode) => update({ phase: mode }),
+      onSpeechStart: (text) => update({ subtitle: text, phase: 'playing' }),
+      onProactiveShow: (trigger) => update({ discussion: { topic: trigger.question, prompt: trigger.prompt }, phase: 'discussion' }),
+      onProactiveHide: () => update({ discussion: null }),
+      onActionUnavailable: (_action, message) => update({ actionNotice: message }),
+      onComplete: () => update({ phase: 'ended' }),
+    });
     engineRef.current = engine;
+    engine.start();
+    return () => { active = false; engine.stop(); if (engineRef.current === engine) engineRef.current = null; };
+  }, [scene, state.playbackRun]);
 
-    return () => {
-      engine.stop();
-      if (engineRef.current === engine) engineRef.current = null;
-    };
-  }, [currentScene, sceneKey, updateScenePlaybackState]);
-
-  useEffect(
-    () => () => {
-      if (presentationTimerRef.current) clearTimeout(presentationTimerRef.current);
-    },
-    [],
-  );
-
-  const handlePlayPause = useCallback(() => {
+  const current = playing && playing.sceneId === scene?.id && playing.run === state.playbackRun ? playing : null;
+  const playPause = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
-
-    if (discussionTrigger) {
-      engine.skipDiscussion();
-      return;
-    }
-    const mode = engine.getMode();
-    if (mode === 'playing') {
-      engine.pause();
-    } else if (mode === 'paused') {
-      engine.resume();
-    } else {
-      if (playbackCompleted) {
-        updateScenePlaybackState(sceneKey, { playbackCompleted: false, actionNotice: null });
-        engine.start();
-      }
-      else engine.continuePlayback();
-    }
-  }, [discussionTrigger, playbackCompleted, sceneKey, updateScenePlaybackState]);
-
-  const handleContinueLecture = useCallback(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.skipDiscussion();
-  }, []);
-
-  const handlePreviousScene = useCallback(() => {
-    if (isPendingScene) {
-      if (scenes.length > 0) setCurrentSceneId(scenes[scenes.length - 1].id);
-      return;
-    }
-    const index = scenes.findIndex((scene) => scene.id === currentSceneId);
-    if (index > 0) setCurrentSceneId(scenes[index - 1].id);
-  }, [currentSceneId, isPendingScene, scenes, setCurrentSceneId]);
-
-  const handleNextScene = useCallback(() => {
-    if (isPendingScene) return;
-    const index = scenes.findIndex((scene) => scene.id === currentSceneId);
-    if (index >= 0 && index < scenes.length - 1) {
-      setCurrentSceneId(scenes[index + 1].id);
-    } else if (index === scenes.length - 1 && (generatingOutlines.length > 0 || isCourseComplete)) {
-      setCurrentSceneId(PENDING_SCENE_ID);
-    }
-  }, [currentSceneId, generatingOutlines.length, isCourseComplete, isPendingScene, scenes, setCurrentSceneId]);
-
-  const togglePresentation = useCallback(async () => {
-    const stageElement = stageRef.current;
-    if (!stageElement) return;
-    try {
-      if (document.fullscreenElement === stageElement) await document.exitFullscreen();
-      else await stageElement.requestFullscreen();
-    } catch {
-      // Fullscreen can be denied by the browser; the classroom remains usable.
-    }
-  }, []);
-
+    if (engine.getMode() === 'playing') engine.pause();
+    else if (engine.getMode() === 'paused') { engine.skipDiscussion(); engine.resume(); }
+    else session.replay();
+  }, [session]);
+  const directory = data?.directory ?? [];
+  const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
+  const select = useCallback((id: string | null) => {
+    session.selectScene(id);
+    if (id && window.matchMedia('(max-width: 767px)').matches) setSidebarCollapsed(true);
+  }, [session]);
+  const next = useCallback(() => {
+    const entries = session.getSnapshot().classroom?.directory ?? [];
+    const currentIndex = entries.findIndex((item) => item.sceneId === session.getSnapshot().sceneId);
+    if (currentIndex >= 0 && currentIndex < entries.length - 1) select(entries[currentIndex + 1].sceneId);
+  }, [select, session]);
+  const previous = useCallback(() => {
+    const entries = session.getSnapshot().classroom?.directory ?? [];
+    const currentIndex = entries.findIndex((item) => item.sceneId === session.getSnapshot().sceneId);
+    if (currentIndex > 0) select(entries[currentIndex - 1].sceneId);
+  }, [select, session]);
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      const active = document.fullscreenElement === stageRef.current;
-      setIsPresenting(active);
-      setControlsVisible(true);
+    const fullscreen = () => setIsPresenting(document.fullscreenElement === stageRef.current);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey ||
+        event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,a,[role=radio],[role=checkbox],[contenteditable=true]')) return;
+      if (event.code === 'Space') { event.preventDefault(); playPause(); }
+      else if (event.key === 'ArrowLeft') previous();
+      else if (event.key === 'ArrowRight') next();
     };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    if (!isPresenting) return;
-    const showControls = () => {
-      setControlsVisible(true);
-      if (presentationTimerRef.current) clearTimeout(presentationTimerRef.current);
-      presentationTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
-    };
-    window.addEventListener('mousemove', showControls);
-    window.addEventListener('keydown', showControls);
-    showControls();
-    return () => {
-      window.removeEventListener('mousemove', showControls);
-      window.removeEventListener('keydown', showControls);
-      if (presentationTimerRef.current) clearTimeout(presentationTimerRef.current);
-    };
-  }, [isPresenting]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-      ) {
-        return;
-      }
-      if (event.code === 'Space') {
-        event.preventDefault();
-        handlePlayPause();
-      } else if (event.key === 'ArrowLeft') {
-        handlePreviousScene();
-      } else if (event.key === 'ArrowRight') {
-        handleNextScene();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNextScene, handlePlayPause, handlePreviousScene]);
-
-  const visibleEngineState =
-    engineMode === 'playing' ? 'playing' : engineMode === 'paused' ? 'paused' : 'idle';
-
-  return (
-    <div ref={stageRef} className="flex flex-1 min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900">
-      <SceneSidebar
-        collapsed={sidebarCollapsed}
-        onCollapseChange={setSidebarCollapsed}
-        onSceneSelect={setCurrentSceneId}
-        isCourseComplete={isCourseComplete}
-      />
-
-      <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden relative">
-        {!isPresenting && (
-          <Header
-            currentSceneTitle={
-              currentScene?.title || (isPendingScene && isCourseComplete ? t('classroom.courseComplete') : '')
-            }
-          />
-        )}
-
-        <CanvasArea
-          currentScene={currentScene}
-          currentSceneIndex={currentSceneIndex}
-          scenesCount={scenes.length}
-          engineState={visibleEngineState}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          onPrevSlide={handlePreviousScene}
-          onNextSlide={handleNextScene}
-          onPlayPause={handlePlayPause}
-          isPresenting={isPresenting}
-          onTogglePresentation={togglePresentation}
-          hideToolbar={isPresenting && !controlsVisible}
-          isPendingScene={isPendingScene}
-          isCourseComplete={isCourseComplete}
-        />
-
-        {actionNotice && (
-          <p role="status" className="border-t border-border px-6 py-2 text-sm text-muted-foreground">
-            {actionNotice}
-          </p>
-        )}
-
-        {!isPresenting && (
-          <section
-            aria-label={t('classroom.subtitle')}
-            aria-live="polite"
-            className="min-h-16 px-6 py-3 flex items-center justify-center border-t border-gray-200/60 dark:border-gray-700/60 bg-white/80 dark:bg-gray-800/80"
-          >
-            {discussionTrigger ? (
-              <div className="w-full max-w-4xl flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">
-                    {t('classroom.discussionPrompt')}
-                  </p>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {discussionTrigger.question}
-                  </p>
-                  {discussionTrigger.prompt && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {discussionTrigger.prompt}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleContinueLecture}
-                >
-                  {t('classroom.continueLecture')}
-                </Button>
-              </div>
-            ) : (
-              <p className="w-full max-w-4xl text-sm text-gray-700 dark:text-gray-200">
-                {playbackView.sourceText || t('classroom.subtitleWaiting')}
-              </p>
-            )}
-          </section>
-        )}
-      </main>
-    </div>
-  );
+    document.addEventListener('fullscreenchange', fullscreen);
+    window.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('fullscreenchange', fullscreen); window.removeEventListener('keydown', keydown); };
+  }, [playPause, next, previous]);
+  const sessionNotice = state.positionNotice ?? state.notice;
+  const notice = sessionNotice ? {
+    ...sessionNotice,
+    actionLabel: sessionNotice.action === 'position' ? '读取确认后重试保存' : sessionNotice.action === 'read' ? '重新读取' : undefined,
+    onAction: sessionNotice.action === 'position' ? () => { void session.retryPosition(); }
+      : sessionNotice.action === 'read' ? () => { void session.refresh(); } : undefined,
+  } : current?.actionNotice ? { title: '播放提示', message: current.actionNotice } : null;
+  const quizQuestions = scene?.content.type === 'quiz' ? scene.content.questions : [];
+  const ungraded = data?.scenes.flatMap((item) => item.content.type === 'quiz' ? item.content.questions.flatMap((question) => {
+    const record = state.questions[session.key(item.id, question.id)]?.record;
+    return record && record.status !== 'completed' ? [{ sceneId: item.id, questionId: question.id, label: item.title + ' · ' + question.question }] : [];
+  }) : []) ?? [];
+  return <div ref={stageRef} className="flex h-full min-h-0 flex-1 flex-col">
+    <ClassroomView directory={directory} scene={scene} pageState={state.page} generationUrl={state.generationUrl}
+      playback={current?.phase ?? 'idle'} subtitle={current?.subtitle} discussion={current?.discussion} effects={current?.effects ?? []}
+      sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+      onSceneSelect={select} onRead={() => { void session.refresh(); }} notice={notice}
+      allScenesReady={data?.allScenesReady} ungraded={ungraded}
+      onLocateQuestion={(id, questionId) => {
+        select(id);
+        requestAnimationFrame(() => {
+          const element = document.getElementById('question-' + encodeURIComponent(session.stageId + '/' + id + '/' + questionId));
+          element?.scrollIntoView({ block: 'center' }); element?.focus();
+        });
+      }}
+      onPlayPause={scene ? playPause : undefined} onContinue={() => engineRef.current?.skipDiscussion()}
+      onNextSegment={current?.phase !== 'ended' && !current?.discussion && scene ? () => engineRef.current?.nextSegment() : undefined}
+      onReplay={scene ? session.replay : undefined}
+      onPrevious={index > 0 ? previous : undefined} onNext={index >= 0 && index < directory.length - 1 ? next : undefined}
+      isPresenting={isPresenting} onFullscreen={async () => {
+        try { if (document.fullscreenElement === stageRef.current) await document.exitFullscreen(); else await stageRef.current?.requestFullscreen(); }
+        catch { setPlaying((value) => value ? { ...value, actionNotice: '浏览器未允许全屏，可继续在当前窗口观看。' } : value); }
+      }}
+      quiz={{
+        questions: Object.fromEntries(quizQuestions.map((question) => [question.id, state.questions[session.key(scene!.id, question.id)] ?? {}])),
+        onChange: (id, answer) => { if (scene) session.changeAnswer(scene.id, id, answer); },
+        onSubmit: (id) => { if (scene) void session.submit(scene.id, id); },
+        onRedo: (id) => { if (scene) session.redo(scene.id, id); },
+        onCancel: (id) => { if (scene) session.cancelRedo(scene.id, id); },
+        onRetry: (id) => { if (scene) void session.retryGrading(scene.id, id); },
+        onRead: (id) => { if (scene) void session.readLatest(scene.id, id); },
+        onSkip: next,
+      }} />
+  </div>;
 }

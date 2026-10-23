@@ -1,4 +1,5 @@
 'use client';
+import { useSanitizedSlideHtml } from '@/lib/utils/sanitize-slide-html';
 
 import { useRef, useState, useLayoutEffect } from 'react';
 import type { PPTLatexElement } from '@/lib/types/slides';
@@ -16,6 +17,7 @@ export function BaseLatexElement({ elementInfo }: BaseLatexElementProps) {
     <div
       className="base-element-latex absolute"
       style={{
+        color: elementInfo.color,
         top: `${elementInfo.top}px`,
         left: `${elementInfo.left}px`,
         width: `${elementInfo.width}px`,
@@ -78,6 +80,7 @@ function KatexContent({
   height: number;
   align?: 'left' | 'center' | 'right';
 }) {
+  const safeHtml = useSanitizedSlideHtml(html);
   const innerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
@@ -88,7 +91,7 @@ function KatexContent({
     if (naturalW > 0 && naturalH > 0) {
       setScale(Math.min(width / naturalW, height / naturalH));
     }
-  }, [html, width, height]);
+  }, [safeHtml, width, height]);
 
   const justify = ALIGN_MAP[align];
   const origin =
@@ -113,7 +116,7 @@ function KatexContent({
           transform: `scale(${scale})`,
           whiteSpace: 'nowrap',
         }}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: safeHtml }}
       />
     </div>
   );

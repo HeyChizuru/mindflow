@@ -1,4 +1,5 @@
 'use client';
+import { useSanitizedSlideHtml } from '@/lib/utils/sanitize-slide-html';
 
 import type { PPTShapeElement, ShapeText } from '@/lib/types/slides';
 import { useElementOutline } from '../hooks/useElementOutline';
@@ -10,12 +11,13 @@ import { PatternDefs } from './PatternDefs';
 
 export interface BaseShapeElementProps {
   elementInfo: PPTShapeElement;
+  viewBoxOrigin?: [number, number];
 }
 
 /**
  * Base shape element for read-only/playback mode
  */
-export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
+export function BaseShapeElement({ elementInfo, viewBoxOrigin = [0, 0] }: BaseShapeElementProps) {
   const { fill } = useElementFill(elementInfo, 'base');
   const { outlineWidth, outlineColor, strokeDashArray } = useElementOutline(elementInfo.outline);
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
@@ -28,6 +30,7 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
     defaultColor: '#333333',
   };
 
+  const safeHtml = useSanitizedSlideHtml(elementInfo.text?.content ?? '');
   return (
     <div
       className="base-element-shape absolute"
@@ -74,7 +77,7 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
             <g
               transform={`scale(${elementInfo.width / elementInfo.viewBox[0]}, ${
                 elementInfo.height / elementInfo.viewBox[1]
-              }) translate(0,0) matrix(1,0,0,1,0,0)`}
+              }) translate(${-viewBoxOrigin[0]},${-viewBoxOrigin[1]}) matrix(1,0,0,1,0,0)`}
             >
               <path
                 vectorEffect="non-scaling-stroke"
@@ -108,7 +111,7 @@ export function BaseShapeElement({ elementInfo }: BaseShapeElementProps) {
                 // @ts-expect-error CSS custom properties
                 '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
               }}
-              dangerouslySetInnerHTML={{ __html: text.content }}
+              dangerouslySetInnerHTML={{ __html: safeHtml }}
             />
           </div>
         </div>
