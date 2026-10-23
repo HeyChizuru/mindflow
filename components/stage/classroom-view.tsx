@@ -18,8 +18,8 @@ export function ClassroomView(props: ClassroomViewProps) {
   return <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-background text-foreground">
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect} />}
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-w-0 shrink-0 items-center justify-between gap-2 pr-3"><Header currentSceneTitle={scene?.title ?? ''} />{pageState === 'ready' && props.onRead && <Button className="shrink-0" variant="outline" size="sm" onClick={props.onRead}>{t('classroom.refreshContent')}</Button>}</div>
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
+      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} /></div>
       {pageState !== 'ready' ? <ClassroomStatus state={pageState} generationUrl={props.generationUrl} onRead={props.onRead} /> : <>
         {props.notice && <div className="max-h-[22dvh] shrink-0 overflow-y-auto px-3 pb-2"><ClassroomNoticeView notice={props.notice} /></div>}
         {props.playback === 'ended' && <div className="max-h-[25dvh] shrink-0 overflow-y-auto px-3 pb-2">

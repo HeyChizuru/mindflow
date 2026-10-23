@@ -3,6 +3,10 @@
 /** MVP 中文文案，替代开源 i18n（阶段 A 静态页） */
 const MESSAGES: Record<string, string> = {
   "classroom.refreshContent": "刷新课堂内容",
+  "classroom.scenePosition": "第 {current} / {total} 场",
+  "classroom.sceneProgress": "课程场次进度",
+  "classroom.captionContent": "讲稿正文",
+  "classroom.sceneNotReadyHint": "内容尚未就绪，可刷新课堂内容后重试",
   "classroom.teachingStep": "当前教学步骤：{count}",
   "quiz.correctAnswer": "正确答案",
   "classroom.ready": "已就绪",
