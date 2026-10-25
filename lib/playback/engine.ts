@@ -1,20 +1,15 @@
 import type { Scene } from '@/lib/types/scene';
 import type { Action } from '@/lib/types/action';
-import type { EngineMode, PlaybackEngineCallbacks, TriggerEvent } from './types';
+import type { EngineMode, PlaybackEngineCallbacks } from './types';
 import { ActionEngine } from '@/lib/action/engine';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('PlaybackEngine');
 
-/** Ordered playback for one scene, with reading time and discussion prompts. */
+/** Ordered playback for one scene; legacy discussion actions are skipped. */
 export class PlaybackEngine {
   private actionIndex = 0;
   private mode: EngineMode = 'idle';
-  private currentTrigger: TriggerEvent | null = null;
-  private pendingTrigger: TriggerEvent | null = null;
-  private triggerDelayTimer: ReturnType<typeof setTimeout> | null = null;
-  private triggerDelayStart = 0;
-  private triggerDelayRemaining = 0;
   private speechTimer: ReturnType<typeof setTimeout> | null = null;
   private speechTimerStart = 0;
   private speechTimerRemaining = 0;
@@ -48,14 +43,6 @@ export class PlaybackEngine {
 
   pause(): void {
     if (this.mode !== 'playing') return;
-    if (this.triggerDelayTimer) {
-      this.triggerDelayRemaining = Math.max(
-        0,
-        this.triggerDelayRemaining - (Date.now() - this.triggerDelayStart),
-      );
-      clearTimeout(this.triggerDelayTimer);
-      this.triggerDelayTimer = null;
-    }
     if (this.speechTimer) {
       this.speechTimerRemaining = Math.max(
         0,
@@ -69,55 +56,27 @@ export class PlaybackEngine {
   }
 
   resume(): void {
-    if (this.mode !== 'paused' || this.currentTrigger) return;
+    if (this.mode !== 'paused') return;
     this.setMode('playing');
     this.actionEngine.resumeEffects();
-    if (this.pendingTrigger) this.scheduleDiscussionTrigger();
-    else if (this.speechTimerRemaining > 0) this.scheduleReadingTimer();
+    if (this.speechTimerRemaining > 0) this.scheduleReadingTimer();
     else this.processNext();
   }
 
   stop(): void {
     this.setMode('idle');
-    if (this.triggerDelayTimer) clearTimeout(this.triggerDelayTimer);
     if (this.speechTimer) clearTimeout(this.speechTimer);
-    this.triggerDelayTimer = null;
     this.speechTimer = null;
-    this.triggerDelayRemaining = 0;
     this.speechTimerRemaining = 0;
-    this.pendingTrigger = null;
-    this.currentTrigger = null;
     this.actionIndex = 0;
     this.actionEngine.clearEffects();
   }
 
-  /** Continue after the user has read the saved topic and prompt. */
-  skipDiscussion(): void {
-    if (!this.currentTrigger) return;
-    this.currentTrigger = null;
-    this.callbacks.onProactiveHide?.();
-    this.actionEngine.resumeEffects();
-    this.setMode('playing');
-    this.processNext();
-  }
-
   /** Finish the current reading interval; every intervening teaching action still runs. */
   nextSegment(): void {
-    if (this.currentTrigger) return;
     if (this.speechTimer) clearTimeout(this.speechTimer);
     this.speechTimer = null;
     this.speechTimerRemaining = 0;
-    if (this.pendingTrigger) {
-      if (this.triggerDelayTimer) clearTimeout(this.triggerDelayTimer);
-      this.triggerDelayTimer = null;
-      this.triggerDelayRemaining = 0;
-      this.currentTrigger = this.pendingTrigger;
-      this.pendingTrigger = null;
-      this.actionEngine.pauseEffects();
-      this.setMode('paused');
-      this.callbacks.onProactiveShow?.(this.currentTrigger);
-      return;
-    }
     this.callbacks.onSpeechEnd?.();
     this.actionEngine.resumeEffects();
     this.setMode('playing');
@@ -139,20 +98,6 @@ export class PlaybackEngine {
     }, this.speechTimerRemaining);
   }
 
-  private scheduleDiscussionTrigger(): void {
-    this.triggerDelayStart = Date.now();
-    this.triggerDelayTimer = setTimeout(() => {
-      this.triggerDelayTimer = null;
-      this.triggerDelayRemaining = 0;
-      if (this.mode !== 'playing' || !this.pendingTrigger) return;
-      this.currentTrigger = this.pendingTrigger;
-      this.pendingTrigger = null;
-      this.actionEngine.pauseEffects();
-      this.setMode('paused');
-      this.callbacks.onProactiveShow?.(this.currentTrigger);
-    }, this.triggerDelayRemaining);
-  }
-
   private processNext(): void {
     if (this.mode !== 'playing') return;
     if (this.actionIndex === 0) {
@@ -160,7 +105,12 @@ export class PlaybackEngine {
       this.callbacks.onSceneChange?.(this.scene.id);
     }
 
-    const action: Action | undefined = this.scene.actions[this.actionIndex];
+    let action: Action | undefined = this.scene.actions[this.actionIndex];
+    // Iterative skip keeps old scenes playable without timers, callbacks or stack growth.
+    while (action?.type === 'discussion') {
+      this.actionIndex++;
+      action = this.scene.actions[this.actionIndex];
+    }
     if (!action) {
       this.actionEngine.clearEffects();
       this.setMode('idle');
@@ -184,11 +134,6 @@ export class PlaybackEngine {
         this.scheduleReadingTimer();
         break;
       }
-      case 'discussion':
-        this.pendingTrigger = { id: action.id, question: action.topic, prompt: action.prompt };
-        this.triggerDelayRemaining = 3000;
-        this.scheduleDiscussionTrigger();
-        break;
       default: {
         const result = this.actionEngine.execute(action);
         if (result.status === 'unavailable') {

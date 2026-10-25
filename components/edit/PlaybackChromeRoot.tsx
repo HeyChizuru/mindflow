@@ -8,7 +8,7 @@ import { PlaybackEngine } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
 
 type PlayingState = { sceneId: string; run: number; phase: PlaybackDisplay; subtitle: string | null;
-  discussion: { topic: string; prompt: string } | null; effects: TeachingEffect[]; actionNotice: string | null };
+  effects: TeachingEffect[]; actionNotice: string | null };
 
 export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
   const { session, state } = useClassroom(stageId);
@@ -28,15 +28,13 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
       if (!active) return;
       setPlaying((current) => ({
         ...(current?.sceneId === sceneId && current.run === run ? current :
-          { sceneId, run, phase: 'idle' as const, subtitle: null, discussion: null, effects: [], actionNotice: null }),
+          { sceneId, run, phase: 'idle' as const, subtitle: null, effects: [], actionNotice: null }),
         ...patch,
       }));
     };
     const engine = new PlaybackEngine(scene, new ActionEngine((effects) => update({ effects }), scene), {
       onModeChange: (mode) => update({ phase: mode }),
       onSpeechStart: (text) => update({ subtitle: text, phase: 'playing' }),
-      onProactiveShow: (trigger) => update({ discussion: { topic: trigger.question, prompt: trigger.prompt }, phase: 'discussion' }),
-      onProactiveHide: () => update({ discussion: null }),
       onActionUnavailable: (_action, message) => update({ actionNotice: message }),
       onComplete: () => update({ phase: 'ended' }),
     });
@@ -50,7 +48,7 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
     const engine = engineRef.current;
     if (!engine) return;
     if (engine.getMode() === 'playing') engine.pause();
-    else if (engine.getMode() === 'paused') { engine.skipDiscussion(); engine.resume(); }
+    else if (engine.getMode() === 'paused') engine.resume();
     else session.replay();
   }, [session]);
   const directory = data?.directory ?? [];
@@ -95,7 +93,7 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
   }) : []) ?? [];
   return <div ref={stageRef} className="flex h-full min-h-0 flex-1 flex-col">
     <ClassroomView directory={directory} scene={scene} pageState={state.page} generationUrl={state.generationUrl}
-      playback={current?.phase ?? 'idle'} subtitle={current?.subtitle} discussion={current?.discussion} effects={current?.effects ?? []}
+      playback={current?.phase ?? 'idle'} subtitle={current?.subtitle} effects={current?.effects ?? []}
       sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
       onSceneSelect={select} onRead={() => { void session.refresh(); }} notices={notices}
       generation={state.generation} onRetryGeneration={() => { void session.retryGeneration(); }}
@@ -107,8 +105,8 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
           element?.scrollIntoView({ block: 'center' }); element?.focus();
         });
       }}
-      onPlayPause={scene ? playPause : undefined} onContinue={() => engineRef.current?.skipDiscussion()}
-      onNextSegment={current?.phase !== 'ended' && !current?.discussion && scene ? () => engineRef.current?.nextSegment() : undefined}
+      onPlayPause={scene ? playPause : undefined}
+      onNextSegment={current?.phase !== 'ended' && scene ? () => engineRef.current?.nextSegment() : undefined}
       onReplay={scene ? session.replay : undefined}
       onPrevious={index > 0 ? previous : undefined} onNext={index >= 0 && index < directory.length - 1 ? next : undefined}
       isPresenting={isPresenting} onFullscreen={async () => {

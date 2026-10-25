@@ -18,7 +18,7 @@ const expandingControlLabelBase = 'max-w-0 overflow-hidden whitespace-nowrap opa
 
 export function CanvasToolbar(props: CanvasToolbarProps) {
   const { t } = useI18n();
-  const playLabel = props.engineState === 'playing' ? 'classroom.pause' : props.engineState === 'paused' || props.engineState === 'discussion' ? 'classroom.resume' : 'classroom.play';
+  const playLabel = props.engineState === 'playing' ? 'classroom.pause' : props.engineState === 'paused' ? 'classroom.resume' : 'classroom.play';
   const isPlaying = props.engineState === 'playing';
   const sceneCount = Math.max(0, props.scenesCount);
   const currentScene = sceneCount > 0 ? Math.min(sceneCount, Math.max(1, props.currentSceneIndex + 1)) : 0;

@@ -3,7 +3,7 @@ feature_id: 课堂讨论
 artifact: spec
 title: 课堂讨论
 spec_status: draft
-delivery_status: planned
+delivery_status: in_progress
 requires: [课堂播放与测验]
 governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-007]
 related_to: [确认大纲并生成首屏, 后台续生成, 文档入库, 配置模型]

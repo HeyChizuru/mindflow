@@ -22,6 +22,7 @@ export type LaserAction = ActionBase & {
   elementId: string;
 };
 
+/** Legacy saved scenes only; new generation and writes must reject this action. */
 export type DiscussionAction = ActionBase & {
   type: "discussion";
   topic: string;

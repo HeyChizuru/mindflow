@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { Action } from '@/lib/types/action';
 import { SLIDE_ONLY_ACTIONS } from '@/lib/types/action';
-import { actionSchema, actionsSchema } from '@/lib/validators/actions';
+import { generatedActionSchema, generatedActionsSchema } from '@/lib/validators/actions';
 import { SceneGenerationError } from './scene-generation-error';
 import { tryParseJson } from './json-repair';
 
@@ -59,7 +59,7 @@ export function parseActionsFromStructuredOutput(
       if (Object.hasOwn(params, 'id') || Object.hasOwn(params, 'type')) invalidActions();
       candidate = { ...params, id, type: item.name ?? item.tool_name };
     }
-    const parsedAction = actionSchema.safeParse(candidate);
+    const parsedAction = generatedActionSchema.safeParse(candidate);
     if (!parsedAction.success) invalidActions();
     const action = parsedAction.data;
     if (sceneType && sceneType !== 'slide' && SLIDE_ONLY_ACTIONS.includes(action.type)) invalidActions();
@@ -68,7 +68,7 @@ export function parseActionsFromStructuredOutput(
     }
     actions.push(action);
   }
-  const result = actionsSchema.safeParse(actions);
+  const result = generatedActionsSchema.safeParse(actions);
   if (!result.success) invalidActions();
   return result.data;
 }

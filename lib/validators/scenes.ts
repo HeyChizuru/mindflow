@@ -1,7 +1,7 @@
 import type { CreateSceneInput, Scene, SlideElement } from "@/lib/types/scene";
 import type { GeneratedQuizContent, GeneratedSlideContent } from "@/lib/types/scene";
 import type { SceneOutline, SlideSceneOutline, QuizSceneOutline } from "@/lib/types/outline";
-import { actionsSchema } from "@/lib/validators/actions";
+import { actionsSchema, generatedActionsSchema } from "@/lib/validators/actions";
 import { z } from "zod";
 
 const nonBlank = z.string().refine((value) => value.trim().length > 0, "不能为空");
@@ -183,7 +183,8 @@ function validateScene(scene: z.infer<typeof sceneBaseSchema>, context: z.Refine
   });
 }
 
-export const createSceneSchema = sceneBaseSchema.superRefine(validateScene) satisfies z.ZodType<CreateSceneInput>;
+export const createSceneSchema = sceneBaseSchema.extend({ actions: generatedActionsSchema })
+  .superRefine(validateScene) satisfies z.ZodType<CreateSceneInput>;
 
 export const sceneSchema = sceneBaseSchema.extend({
   id: z.uuid(),

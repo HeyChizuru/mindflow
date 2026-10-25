@@ -10,7 +10,7 @@ import type { QuizFailureCode } from '@/lib/types/classroom';
 import { STAGE_ID, QUIZ_ID, END_ID, slide, tallSlide, unsafeSlide, quizScene, closingScene, directory, questions, sampleRecord, sampleEffects, effectOptions } from './fixtures';
 
 const pageOptions: [PageState, string][] = [['ready', '可播放'], ['loading', '读取中'], ['draft', '草稿课堂'], ['first_scene_pending', '首场未就绪'], ['not_found', '课堂不存在'], ['invalid_address', '无效地址'], ['read_failed', '读取失败']];
-const playbackOptions: [PlaybackDisplay, string][] = [['idle', '尚未开始'], ['playing', '讲解中'], ['paused', '暂停'], ['discussion', '讨论提示'], ['ended', '本场结束']];
+const playbackOptions: [PlaybackDisplay, string][] = [['idle', '尚未开始'], ['playing', '讲解中'], ['paused', '暂停'], ['ended', '本场结束']];
 const quizModes = ['unsubmitted', 'completed', 'incorrect', 'pending', 'processing', 'failed', 'expired', 'redo', 'submitting', 'unsaved', 'unknown', 'conflict', 'MODEL_CONFIG_REQUIRED', 'INVALID_MODEL_RESULT', 'GRADING_TIMEOUT', 'RESULT_SAVE_FAILED'] as const;
 type QuizMode = typeof quizModes[number];
 const quizLabels = ['未提交', '已完成示例', '选择题错误示例', '简答待批改', '简答批改中', '简答批改失败', '简答执行过期', '主动重做', '提交中', '答案未保存', '保存待确认', '版本冲突', '缺模型配置', '批改输出无效', '批改超时', '结果保存失败'];
@@ -116,14 +116,12 @@ export function StaticClassroomPreview() {
     <div ref={surfaceRef} className="flex min-h-0 flex-1 flex-col bg-background">
       <ClassroomView directory={entries} scene={scene} pageState={pageState} generationUrl={'/generation-preview/' + STAGE_ID}
         playback={playback} subtitle={subtitle} effects={sampleEffects(effect, scene.type === 'quiz')}
-        discussion={playback === 'discussion' ? { topic: '怎样判断自己已经理解一个概念？', prompt: '回想最近的一次学习经历，给出一个具体例子。' } : null}
         notice={notice} allScenesReady={allReady}
         sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         onSceneSelect={selectScene} onRead={() => setPageState('ready')}
         onPlayPause={() => setPlayback((v) => v === 'playing' ? 'paused' : 'playing')}
         onNextSegment={() => setSubtitle('下一段样例：请用一个小练习检查理解，并记下仍不确定的地方。')}
         onReplay={() => { setPlayback('playing'); setEffect('none'); setSubtitle('从本场开头重新展示字幕，答题记录保持不变。'); }}
-        onContinue={() => setPlayback('playing')}
         onPrevious={sceneIndex > 0 ? () => selectScene(entries[sceneIndex - 1].sceneId) : undefined}
         onNext={sceneIndex >= 0 && sceneIndex < entries.length - 1 ? () => selectScene(entries[sceneIndex + 1].sceneId) : undefined}
         isPresenting={isPresenting} onFullscreen={async () => {

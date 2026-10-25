@@ -4,7 +4,7 @@ import type { Scene } from '@/lib/types/scene';
 import type { BackgroundGenerationState } from '@/lib/types/stage-generation';
 
 export type PageState = 'ready' | 'loading' | 'draft' | 'first_scene_pending' | 'not_found' | 'invalid_address' | 'read_failed';
-export type PlaybackDisplay = 'idle' | 'playing' | 'paused' | 'discussion' | 'ended';
+export type PlaybackDisplay = 'idle' | 'playing' | 'paused' | 'ended';
 export type TeachingEffect = Exclude<Action, { type: 'speech' | 'discussion' }>;
 export type QuestionDisplay = {
   record?: QuizSubmission;
@@ -31,7 +31,6 @@ export interface ClassroomViewProps {
   generationUrl?: string;
   playback: PlaybackDisplay;
   subtitle?: string | null;
-  discussion?: { topic: string; prompt?: string } | null;
   effects?: TeachingEffect[];
   quiz?: QuizPresentation;
   notice?: ClassroomNotice | null;
@@ -46,7 +45,6 @@ export interface ClassroomViewProps {
   onPlayPause?: () => void;
   onNextSegment?: () => void;
   onReplay?: () => void;
-  onContinue?: () => void;
   onPrevious?: () => void;
   onNext?: () => void;
   onRead?: () => void;

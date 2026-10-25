@@ -48,7 +48,7 @@ export function ClassroomView(props: ClassroomViewProps) {
           onNextSegment={props.onNextSegment} onReplay={props.onReplay}
           isPresenting={props.isPresenting} onTogglePresentation={props.onFullscreen} quiz={props.quiz} effects={props.effects} />
         </div>
-        <PlaybackCaption playback={props.playback} subtitle={props.subtitle} discussion={props.discussion} onContinue={props.onContinue} />
+        <PlaybackCaption playback={props.playback} subtitle={props.subtitle} />
       </>}
     </main>
   </div>;

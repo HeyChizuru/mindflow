@@ -28,3 +28,15 @@ export const actionsSchema = z.array(actionSchema).min(1).superRefine((actions, 
     context.addIssue({ code: "custom", message: "场景必须包含讲稿" });
   }
 });
+
+/** Keep saved-scene reads compatible while rejecting retired actions on new output/writes. */
+export const generatedActionSchema = actionSchema.refine((action) => action.type !== "discussion", {
+  message: "不再支持生成讨论动作",
+});
+export const generatedActionsSchema = actionsSchema.superRefine((actions, context) => {
+  actions.forEach((action, index) => {
+    if (action.type === "discussion") {
+      context.addIssue({ code: "custom", path: [index], message: "新场景不能包含讨论动作" });
+    }
+  });
+});

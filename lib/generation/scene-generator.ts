@@ -686,7 +686,7 @@ export async function generateSceneActions(
     const response = await aiCall(prompts.system, [inputContext, prompts.user].filter(Boolean).join('\n\n'));
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
-    return processActions(actions, content.elements, agents);
+    return processActions(actions, content.elements);
   }
 
   if (outline.type === 'quiz' && 'questions' in content) {
@@ -711,7 +711,7 @@ export async function generateSceneActions(
     const response = await aiCall(prompts.system, [inputContext, prompts.user].filter(Boolean).join('\n\n'));
     const actions = parseActionsFromStructuredOutput(response, outline.type);
 
-    return processActions(actions, content.questions, agents);
+    return processActions(actions, content.questions);
   }
 
   throw new SceneGenerationError('动作生成内容与场景类型不一致，请重试', 502);
@@ -880,16 +880,13 @@ export function convertTeacherActionsToActions(teacherActions: TeacherAction[]):
  * Process and validate Actions
  * 处理和校验动作
  */
-function processActions(actions: Action[], elements: { id: string }[], agents?: AgentInfo[]): Action[] {
+function processActions(actions: Action[], elements: { id: string }[]): Action[] {
   const elementIds = new Set(elements.map((el) => el.id));
-  const agentIds = new Set(agents?.map((a) => a.id) || []);
-  const studentAgents = agents?.filter((a) => a.role === 'student') || [];
-  const nonTeacherAgents = agents?.filter((a) => a.role !== 'teacher') || [];
 
   return actions.map((action) => {
     // Ensure each action has an ID
 // 确保每个动作有 ID
-    const processedAction: Action & { agentId?: string } = {
+    const processedAction: Action = {
       ...action,
       id: action.id || `action_${nanoid(8)}`,
     };
@@ -903,26 +900,6 @@ function processActions(actions: Action[], elements: { id: string }[], agents?: 
     if ((processedAction.type === 'widget_highlight' || processedAction.type === 'widget_annotation')
       && !elementIds.has(processedAction.target)) {
       throw new SceneGenerationError('组件动作指向不存在的本页目标，请重试', 502);
-    }
-
-    // Validate/fill discussion agentId
-// 校验/填充讨论的 agentId
-    if (processedAction.type === 'discussion' && agents && agents.length > 0) {
-      if (processedAction.agentId && agentIds.has(processedAction.agentId)) {
-        // agentId valid — keep it
-// agentId 有效 — 保留
-      } else {
-        // agentId missing or invalid — pick a random student, or non-teacher, or skip
-// agentId 缺失或无效 — 随机选择一个学生或非教师角色，或跳过
-        const pool = studentAgents.length > 0 ? studentAgents : nonTeacherAgents;
-        if (pool.length > 0) {
-          const picked = pool[Math.floor(Math.random() * pool.length)];
-          log.warn(
-            `Discussion agentId "${processedAction.agentId || '(none)'}" invalid, assigned: ${picked.id} (${picked.name})`,
-          );
-          processedAction.agentId = picked.id;
-        }
-      }
     }
 
     return processedAction;
