@@ -55,6 +55,21 @@ type SimilarChunkRow = {
   score: number;
 };
 
+/** Resolve explicit sources using both chunk and document ownership; no embedding service required. */
+export async function getChatSourcesByChunkIds(
+  stageId: string, chunkIds: string[], db: Pick<PrismaClient, "$queryRaw"> = prisma,
+) {
+  if (chunkIds.length === 0) return [];
+  return db.$queryRaw<{
+    chunkId: string; documentId: string; filename: string; page: number | null; excerpt: string;
+  }[]>(Prisma.sql`
+    SELECT c.id AS "chunkId", c.document_id AS "documentId", d.filename, c.page, c.content AS excerpt
+    FROM chunks AS c JOIN documents AS d ON d.id = c.document_id AND d.stage_id = c.stage_id
+    WHERE c.stage_id = ${stageId}::uuid AND d.stage_id = ${stageId}::uuid
+      AND c.id IN (${Prisma.join(chunkIds.map((id) => Prisma.sql`${id}::uuid`))})
+  `);
+}
+
 /** 按课堂隔离做 cosine 近邻检索；必须带 stage_id */
 export async function searchSimilarChunks(
   stageId: string,

@@ -51,5 +51,5 @@ flowchart LR
 | 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
 | 文档入库       | accepted    | in_progress     | 创建课堂      | [spec](./features/文档入库/spec.md)                                         |
 
-2026-10-25：课堂讨论采用用户主动展开右侧聊天、系统每轮选择一名教师的契约；相关生成与播放 spec 同步取消 `discussion` 动作。表中受影响单元的状态对应变更后的规格，变更待实现与验证；原有 plan、tasks 与验收记录保留历史交付证据，不代表新契约已交付。
+2026-10-25：课堂讨论采用用户主动展开右侧聊天、系统每轮选择一名教师的契约；相关生成与播放 spec 同步取消 `discussion` 动作。阶段一旧动作清理与教师上下文、阶段二聊天保存与恢复已实施，局部验证及其边界见各阶段 task 的交付记录；LangGraph 与前端问答尚未接入。表中受影响单元的状态对应变更后的规格，原有 plan、tasks 与验收记录保留历史交付证据，不代表完整新契约已交付。
 
