@@ -82,7 +82,7 @@ async function postSceneGeneration(path: string, body: unknown, headers: Headers
   }
 }
 
-export async function generateFirstSceneContent(input: SceneContentGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
+export async function generateSceneContent(input: SceneContentGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
   const body = sceneContentGenerationBodySchema.safeParse(input);
   if (!body.success) throw new StageGenerationRequestError("生成依据无效，请重新读取课堂", 400);
   const parsed = sceneContentGenerationResponseSchema.safeParse(await postSceneGeneration(
@@ -94,7 +94,7 @@ export async function generateFirstSceneContent(input: SceneContentGenerationBod
   return parsed.data;
 }
 
-export async function generateFirstSceneActions(input: SceneActionsGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
+export async function generateSceneActions(input: SceneActionsGenerationBody, headers: HeadersInit, signal?: AbortSignal) {
   const body = sceneActionsGenerationBodySchema.safeParse(input);
   if (!body.success) throw new StageGenerationRequestError("场景内容无效，请重新生成内容", 400);
   const parsed = sceneActionsGenerationResponseSchema.safeParse(await postSceneGeneration(
@@ -105,6 +105,9 @@ export async function generateFirstSceneActions(input: SceneActionsGenerationBod
   }
   return parsed.data;
 }
+
+// Preserve the generation-preview call sites while sharing the same target-based contract.
+export { generateSceneContent as generateFirstSceneContent, generateSceneActions as generateFirstSceneActions };
 
 export async function confirmOutlines(
   stageId: string,

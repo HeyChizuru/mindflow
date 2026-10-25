@@ -19,6 +19,7 @@
 - [外部服务边界（LLM / RAG）](./adr/adr-003.md)
 - [代码依赖方向](./adr/adr-004.md)
 - [大纲何时入库](./adr/adr-005.md)
+- [测验提交与评分并发](./adr/adr-006.md)
 
 ## 功能模块
 
@@ -41,7 +42,7 @@ flowchart LR
 | feature_id | spec_status | delivery_status | requires  | 文件                                                                      |
 | ---------- | ----------- | --------------- | --------- | ----------------------------------------------------------------------- |
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
-| 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md)                                        |
+| 后台续生成      | draft       | verified        | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
 | 课堂播放与测验    | accepted    | verified        | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
 | 课堂讨论       | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂讨论/spec.md)                                         |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |

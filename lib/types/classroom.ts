@@ -84,6 +84,7 @@ export type ClassroomReadResponse = { success: true } & (
       classroom: {
         stage: StageResponse;
         outlines: SceneOutline[];
+        languageDirective: string | null;
         directory: ClassroomDirectoryEntry[];
         scenes: Scene[];
         playback: ClassroomPlaybackPosition;

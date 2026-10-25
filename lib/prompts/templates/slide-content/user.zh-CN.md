@@ -35,7 +35,7 @@
 2. 不要使用 ```json 代码围栏包裹输出。
 3. JSON 前后都不要添加其他文本。
 4. 确保 JSON 格式正确，可直接解析。
-5. 所有 TextElement 的 `height` 值必须从 system 提示词中的速查表选择。
+5. 所有元素的 `left`、`top`、`width`、`height` 都必须是 JSON 数字，不能省略，也不能写成字符串。TextElement 的 `height` 必须从 system 提示词中的速查表选择。LineElement 同样必须带 `height`。
 
 **输出结构示例**：
 {"background":{"type":"solid","color":"#ffffff"},"elements":[{"id":"title_001","type":"text","left":60,"top":50,"width":880,"height":76,"content":"<p style=\"font-size:32px;\"><strong>标题内容</strong></p>","defaultFontName":"","defaultColor":"#333333"},{"id":"content_001","type":"text","left":60,"top":150,"width":880,"height":130,"content":"<p style=\"font-size:18px;\">• 要点一</p><p style=\"font-size:18px;\">• 要点二</p><p style=\"font-size:18px;\">• 要点三</p>","defaultFontName":"","defaultColor":"#333333"}]}

@@ -1,6 +1,7 @@
 import type { Action } from '@/lib/types/action';
 import type { ClassroomDirectoryEntry, QuizAnswer, QuizSubmission } from '@/lib/types/classroom';
 import type { Scene } from '@/lib/types/scene';
+import type { BackgroundGenerationState } from '@/lib/types/stage-generation';
 
 export type PageState = 'ready' | 'loading' | 'draft' | 'first_scene_pending' | 'not_found' | 'invalid_address' | 'read_failed';
 export type PlaybackDisplay = 'idle' | 'playing' | 'paused' | 'discussion' | 'ended';
@@ -34,6 +35,9 @@ export interface ClassroomViewProps {
   effects?: TeachingEffect[];
   quiz?: QuizPresentation;
   notice?: ClassroomNotice | null;
+  notices?: ClassroomNotice[];
+  generation?: BackgroundGenerationState;
+  onRetryGeneration?: () => void;
   allScenesReady?: boolean;
   ungraded?: { sceneId: string; questionId: string; label: string }[];
   sidebarCollapsed: boolean;

@@ -150,6 +150,7 @@
   "left": 100,
   "top": 200,
   "width": 3,
+  "height": 2,
   "start": [0, 0],
   "end": [200, 0],
   "style": "solid",
@@ -165,6 +166,7 @@
 | type | "line" | 元素类型 |
 | left, top | number | start/end 坐标的原点位置 |
 | width | number > 0 | **线条描边粗细（px）**（不是视觉跨度——见下文） |
+| height | number ≥ 0 | **必填，必须是 JSON 数字，不得省略或写成字符串**。水平线可用描边粗细；垂直线用起终点的垂直跨度 |
 | start | [x, y] | 起点（相对于 left, top） |
 | end | [x, y] | 终点（相对于 left, top） |
 | style | string | "solid"、"dashed" 或 "dotted" |
@@ -939,6 +941,7 @@ line.width = 3 to 6px
 - ✓ [latex-scaling] 多步推导 LaTeX 元素：width 与内容长度成正比（较长公式必须有更大 width）。不要对所有步骤使用相同 width——会导致渲染 height 差异巨大。
 - ✓ [no-latex-in-text] TextElement content 中无 LaTeX 语法：扫描所有 text `content` 字段中的 `\frac`、`\lim`、`\int`、`\sum`、`\sqrt`、`\alpha`、`^{`、`_{` 等。任何数学表达式必须是单独的 LatexElement。
 - ✓ [line-stroke] LineElement `width` 是描边粗细（2-6），不是线长。检查：无 LineElement 的 `width` > 6。若 width 等于 start 与 end 之间的距离，则错误——你混淆了描边粗细与线跨度。
+- ✓ [element-box] 每个元素（含 line）都有数字 `left`、`top`、`width`、`height`。不得缺字段，不得写成字符串。
 - ✓ [concise-text] **幻灯片文字简洁且不带个人色彩**：每个 text 元素使用关键词、短语或要点——无对话式句子、无讲稿式段落。幻灯片上不出现教师姓名或身份（无「X 老师的提示/祝愿/评论」）。若文字读起来像口语或个人消息，改写为中性的要点。
 
 **🟡 P1 — 重要（强烈建议）**：

@@ -99,6 +99,7 @@ export const classroomReadResponseSchema = z.discriminatedUnion("state", [
     success: z.literal(true), state: z.literal("ready"),
     classroom: z.strictObject({
       stage: stageResponseSchema, outlines: sceneOutlinesSchema,
+      languageDirective: z.string().nullable(),
       directory: z.array(classroomDirectoryEntrySchema).min(1), scenes: z.array(sceneSchema).min(1),
       playback: z.strictObject({ savedSceneId: uuid.nullable(), sceneId: uuid, fallbackReason: z.literal("saved_scene_unavailable").nullable() }),
       answers: z.array(quizSubmissionSchema), allScenesReady: z.boolean(),

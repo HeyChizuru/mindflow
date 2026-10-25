@@ -2,8 +2,10 @@ import { classroomIdSchema, quizAnswerSchema } from '@/lib/validators/classroom'
 import type { ClassroomReadResponse, QuizAnswer, QuizGradeBody } from '@/lib/types/classroom';
 import type { QuestionDisplay } from '@/components/stage/classroom-view-types';
 import { ClassroomRequestError, readClassroom, writePlaybackPosition, sendQuizAnswer, type ReadyClassroom } from './classroom';
+import { BackgroundGeneration, initialBackgroundGenerationState } from './generate/background-generation';
+import type { BackgroundGenerationState } from '@/lib/types/stage-generation';
 
-export type SessionNotice = { title: string; message: string; action?: 'read' | 'position' };
+export type SessionNotice = { title: string; message: string; action?: 'read' | 'position'; kind?: 'read_failed' };
 export type ClassroomSessionState = {
   page: 'loading' | 'draft' | 'first_scene_pending' | 'ready' | 'not_found' | 'invalid_address' | 'read_failed';
   classroom: ReadyClassroom | null;
@@ -13,6 +15,7 @@ export type ClassroomSessionState = {
   questions: Record<string, QuestionDisplay>;
   notice: SessionNotice | null;
   positionNotice: SessionNotice | null;
+  generation: BackgroundGenerationState;
 };
 const questionKey = (stageId: string, sceneId: string, questionId: string) => stageId + '/' + sceneId + '/' + questionId;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -32,12 +35,24 @@ export class ClassroomSession {
   private pending = new Map<string, QuizGradeBody>();
   private positionRunning = false;
   private desiredPosition: string | null = null;
-  private getChatHeaders: () => HeadersInit;
-  constructor(stageId: string, getChatHeaders: () => HeadersInit) {
+  private latestRead: Promise<ClassroomReadResponse | null> | null = null;
+  private readonly generation: BackgroundGeneration;
+  private getModelHeaders: (hasKnowledgeBase: boolean) => HeadersInit;
+  constructor(stageId: string, getModelHeaders: (hasKnowledgeBase: boolean) => HeadersInit) {
     this.stageId = stageId.toLowerCase();
-    this.getChatHeaders = getChatHeaders;
+    this.getModelHeaders = getModelHeaders;
     this.state = { page: classroomIdSchema.safeParse(stageId).success ? 'loading' : 'invalid_address',
-      classroom: null, sceneId: null, playbackRun: 0, questions: {}, notice: null, positionNotice: null };
+      classroom: null, sceneId: null, playbackRun: 0, questions: {}, notice: null, positionNotice: null,
+      generation: initialBackgroundGenerationState() };
+    this.generation = new BackgroundGeneration({
+      current: () => this.state.classroom,
+      read: async () => {
+        const response = await this.refresh();
+        return response?.state === 'ready' ? this.state.classroom : null;
+      },
+      headers: (hasKnowledgeBase) => this.getModelHeaders(hasKnowledgeBase),
+      onState: (generation) => this.patch({ generation }),
+    });
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.state;
@@ -47,9 +62,15 @@ export class ClassroomSession {
     this.listeners.forEach((listener) => listener());
   }
   private controller() { const controller = new AbortController(); this.controllers.add(controller); return controller; }
-  start = () => { this.active = true; this.epoch++; if (this.state.page !== 'invalid_address') void this.refresh(); };
+  start = () => {
+    if (this.active) return;
+    this.active = true; this.epoch++;
+    this.generation.start();
+    if (this.state.page !== 'invalid_address') void this.refresh();
+  };
   dispose = () => {
     this.active = false; this.epoch++;
+    this.generation.dispose(); this.latestRead = null;
     this.controllers.forEach((controller) => controller.abort());
     this.controllers.clear(); this.operations.clear();
     this.positionRunning = false; this.desiredPosition = null;
@@ -86,27 +107,38 @@ export class ClassroomSession {
     }
     const sceneId = previous && scenes.some((scene) => scene.id === this.state.sceneId) ? this.state.sceneId : data.playback.sceneId;
     this.patch({ page: 'ready', classroom: { ...data, scenes }, sceneId, questions,
+      ...(this.state.notice?.kind === 'read_failed' ? { notice: null } : {}),
       ...((!previous && data.playback.fallbackReason || previous && sceneId !== this.state.sceneId) ? { notice: { title: '已回到首场', message: '上次保存的位置已不可用，从首场开头观看。' } } : {}) });
   }
-  refresh = async (): Promise<ClassroomReadResponse | null> => {
-    const epoch = this.epoch, sequence = ++this.readSequence, revision = this.revision;
+  retryGeneration = () => this.generation.retry();
+  refresh = (): Promise<ClassroomReadResponse | null> => {
+    if (!this.active) return Promise.resolve(null);
+    const operation = this.readSnapshot(this.epoch, ++this.readSequence, this.revision);
+    this.latestRead = operation;
+    return operation;
+  };
+  private async readSnapshot(epoch: number, sequence: number, revision: number): Promise<ClassroomReadResponse | null> {
     const controller = this.controller();
     try {
       const data = await readClassroom(this.stageId, controller.signal);
       if (!this.active || epoch !== this.epoch) return null;
-      if (sequence === this.readSequence) {
-        if (data.state === 'ready') this.mergeReady(data.classroom, revision);
-        else this.patch({ page: data.state, classroom: null, sceneId: null, generationUrl: data.generationUrl });
-      }
+      if (sequence !== this.readSequence) return this.latestRead;
+      if (data.state === 'ready') this.mergeReady(data.classroom, revision);
+      else this.patch({ page: data.state, classroom: null, sceneId: null, generationUrl: data.generationUrl });
+      this.generation.observe(data.state === 'ready' ? this.state.classroom : null);
       return data;
     } catch (error) {
-      if (!this.active || epoch !== this.epoch || controller.signal.aborted || sequence !== this.readSequence) return null;
-      if (error instanceof ClassroomRequestError && error.status === 404) this.patch({ page: 'not_found', classroom: null, sceneId: null });
-      else if (this.state.classroom) this.patch({ notice: { title: '课堂更新失败', message: '当前内容和输入仍保留，可以重新读取。', action: 'read' } });
+      if (!this.active || epoch !== this.epoch || controller.signal.aborted) return null;
+      if (sequence !== this.readSequence) return this.latestRead;
+      if (error instanceof ClassroomRequestError && error.status === 404) {
+        this.patch({ page: 'not_found', classroom: null, sceneId: null });
+        this.generation.observe(null);
+      }
+      else if (this.state.classroom) this.patch({ notice: { title: '课堂更新失败', message: '当前内容和输入仍保留，可以重新读取。', action: 'read', kind: 'read_failed' } });
       else this.patch({ page: error instanceof ClassroomRequestError && error.status === 404 ? 'not_found' : 'read_failed' });
       return null;
     } finally { this.controllers.delete(controller); }
-  };
+  }
   selectScene = (sceneId: string | null) => {
     const data = this.state.classroom;
     if (!data || !sceneId || !data.directory.some((item) => item.ready && item.sceneId === sceneId) || !data.scenes.some((scene) => scene.id === sceneId)) {
@@ -197,7 +229,7 @@ export class ClassroomSession {
     const controller = this.controller();
     try {
       const needsModel = body.operation === 'retry' || body.answer.type === 'short_answer';
-      const record = await sendQuizAnswer(body, needsModel ? this.getChatHeaders() : {}, controller.signal);
+      const record = await sendQuizAnswer(body, needsModel ? this.getModelHeaders(false) : {}, controller.signal);
       if (!this.active || epoch !== this.epoch) return;
       this.touch(key);
       this.updateQuestion(body.sceneId, body.questionId, { record, draft: undefined, editing: false, submitting: false, issue: undefined });

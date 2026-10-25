@@ -135,6 +135,7 @@ export async function getClassroom(stageId: unknown): Promise<ClassroomReadRespo
         success: true, state: "ready",
         classroom: {
           stage, outlines, directory, scenes, answers,
+          languageDirective: saved.languageDirective,
           allScenesReady: directory.every((entry) => entry.ready),
           playback: {
             savedSceneId: saved.currentSceneId, sceneId: restoredScene?.id ?? firstScene.id,

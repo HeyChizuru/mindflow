@@ -82,13 +82,12 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
     window.addEventListener('keydown', keydown);
     return () => { document.removeEventListener('fullscreenchange', fullscreen); window.removeEventListener('keydown', keydown); };
   }, [playPause, next, previous]);
-  const sessionNotice = state.positionNotice ?? state.notice;
-  const notice = sessionNotice ? {
+  const notices = [...[state.positionNotice, state.notice].flatMap((sessionNotice) => sessionNotice ? [{
     ...sessionNotice,
     actionLabel: sessionNotice.action === 'position' ? '读取确认后重试保存' : sessionNotice.action === 'read' ? '重新读取' : undefined,
     onAction: sessionNotice.action === 'position' ? () => { void session.retryPosition(); }
       : sessionNotice.action === 'read' ? () => { void session.refresh(); } : undefined,
-  } : current?.actionNotice ? { title: '播放提示', message: current.actionNotice } : null;
+  }] : []), ...(current?.actionNotice ? [{ title: '播放提示', message: current.actionNotice }] : [])];
   const quizQuestions = scene?.content.type === 'quiz' ? scene.content.questions : [];
   const ungraded = data?.scenes.flatMap((item) => item.content.type === 'quiz' ? item.content.questions.flatMap((question) => {
     const record = state.questions[session.key(item.id, question.id)]?.record;
@@ -98,7 +97,8 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
     <ClassroomView directory={directory} scene={scene} pageState={state.page} generationUrl={state.generationUrl}
       playback={current?.phase ?? 'idle'} subtitle={current?.subtitle} discussion={current?.discussion} effects={current?.effects ?? []}
       sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
-      onSceneSelect={select} onRead={() => { void session.refresh(); }} notice={notice}
+      onSceneSelect={select} onRead={() => { void session.refresh(); }} notices={notices}
+      generation={state.generation} onRetryGeneration={() => { void session.retryGeneration(); }}
       allScenesReady={data?.allScenesReady} ungraded={ungraded}
       onLocateQuestion={(id, questionId) => {
         select(id);

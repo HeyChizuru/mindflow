@@ -4,7 +4,7 @@ import { ClassroomSession } from '@/lib/client/classroom-session';
 import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
 
 export function useClassroom(stageId: string) {
-  const session = useMemo(() => new ClassroomSession(stageId, () => outlineRequestHeaders(false)), [stageId]);
+  const session = useMemo(() => new ClassroomSession(stageId, outlineRequestHeaders), [stageId]);
   useEffect(() => {
     session.start();
     const refreshVisible = () => { if (document.visibilityState === 'visible') void session.refresh(); };

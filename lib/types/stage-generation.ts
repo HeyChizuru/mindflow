@@ -1,6 +1,17 @@
 import type { SceneOutline } from "@/lib/types/outline";
 import type { GeneratedQuizContent, GeneratedSlideContent, Scene } from "@/lib/types/scene";
 
+/** Page-local orchestration state; never persisted or sent to the generation APIs. */
+export type BackgroundGenerationStep = "reading" | "content" | "actions";
+export type BackgroundGenerationState = {
+  phase: "idle" | BackgroundGenerationStep | "failed" | "complete";
+  target: { outlineId: string; title: string } | null;
+  failedStep: BackgroundGenerationStep | null;
+  reason: "read_failed" | "previous_scene_missing" | "saved_scene_unavailable" | "generation_failed" | null;
+  error: string | null;
+  recovery: "read" | "retry" | null;
+};
+
 /** The caller selects the target; both APIs verify these inputs against the saved stage. */
 export type SceneContentGenerationBody = {
   stageId: string;

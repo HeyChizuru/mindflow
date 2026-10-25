@@ -363,6 +363,67 @@ function processLatexElements(
     .filter((el): el is NonNullable<typeof el> => el !== null);
 }
 
+const GEOMETRY_KEYS = ["left", "top", "width", "height", "rotate"] as const;
+
+/** 把模型写成数字字符串的坐标、尺寸和端点转成数字。缺字段不补。 */
+function coerceGeometryValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "" || !Number.isFinite(Number(trimmed))) return undefined;
+  return Number(trimmed);
+}
+
+function coerceGeometryElement(element: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...element };
+  for (const key of GEOMETRY_KEYS) {
+    if (!(key in next)) continue;
+    const coerced = coerceGeometryValue(next[key]);
+    if (coerced !== undefined) next[key] = coerced;
+  }
+  for (const key of ["start", "end", "viewBox"] as const) {
+    const value = next[key];
+    if (!Array.isArray(value) || value.length !== 2) continue;
+    const pair = value.map((item) => coerceGeometryValue(item));
+    if (pair[0] !== undefined && pair[1] !== undefined) next[key] = pair;
+  }
+  return next;
+}
+
+/** 只保留字段路径和校验说明，避免把整页内容打进日志或无限塞进修正提示。 */
+function formatSchemaIssues(error: { issues: { path: PropertyKey[]; message: string }[] }): string {
+  const shown = error.issues.slice(0, 12);
+  const lines = shown.map((issue) => `${issue.path.map(String).join(".") || "(root)"}: ${issue.message}`);
+  const rest = error.issues.length - shown.length;
+  if (rest > 0) lines.push(`另有 ${rest} 个问题`);
+  return lines.join("\n");
+}
+
+/**
+ * 生成一次；结构校验失败时把问题发回模型修正一次。
+ * 服务端不补造缺字段。模型调用失败原样抛出；两次都不通过返回 null。
+ */
+async function callAndRepair<T>(
+  aiCall: AICallFn,
+  prompts: { system: string; user: string },
+  accept: (response: string) => { ok: true; value: T } | { ok: false; issues: string },
+  label: string,
+): Promise<T | null> {
+  const response = await aiCall(prompts.system, prompts.user);
+  const first = accept(response);
+  if (first.ok) return first.value;
+
+  log.warn(`[${label}] content rejected: ${first.issues}`);
+  const repaired = await aiCall(
+    prompts.system,
+    `${prompts.user}\n\n上一次输出未通过校验。请保持相同的顶层 JSON 结构，只修正下列问题并重新输出完整 JSON。不要解释，不要代码块。缺的必填数字请补成 JSON 数字，不要输出 image 或 video。\n\n校验问题：\n${first.issues}\n\n上次输出：\n${response}`,
+  );
+  const second = accept(repaired);
+  if (second.ok) return second.value;
+  log.warn(`[${label}] content still rejected: ${second.issues}`);
+  return null;
+}
+
 /**
  * Generate slide content
  * 生成幻灯片内容
@@ -401,45 +462,47 @@ async function generateSlideContent(
 
   log.info(`Generating slide content for: ${outline.title}`);
 
-  const response = await aiCall(prompts.system, prompts.user);
+  return callAndRepair(aiCall, prompts, (response) => acceptSlideContent(outline, response), outline.title);
+}
+
+/** 解析并校验一页幻灯片。数字字符串会转成数字；缺字段不补，交给修正轮或拒绝。 */
+function acceptSlideContent(
+  outline: SlideSceneOutline,
+  response: string,
+): { ok: true; value: GeneratedSlideContent } | { ok: false; issues: string } {
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
   if (!generatedData || !Array.isArray(generatedData.elements)
     || generatedData.elements.some((element) => !element || typeof element !== 'object' || Array.isArray(element))) {
-    log.error(`Failed to parse AI response for: ${outline.title}`);
-    return null;
+    return { ok: false, issues: "响应不是包含 elements 数组的 JSON" };
   }
 
-  log.info(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
+  const elements = generatedData.elements.map((element) =>
+    coerceGeometryElement(element as Record<string, unknown>),
+  ) as GeneratedSlideData["elements"];
+  log.info(`Got ${elements.length} elements for: ${outline.title}`);
 
-  const fixedElements = fixElementDefaults(generatedData.elements);
+  const fixedElements = fixElementDefaults(elements);
   log.info(`After element fixing: ${fixedElements.length} elements`);
 
-  // Process LaTeX elements: render latex string → HTML via KaTeX
-// 处理 LaTeX 元素：通过 KaTeX 将 LaTeX 字符串渲染为 HTML
   const latexProcessedElements = processLatexElements(fixedElements);
   log.info(`After LaTeX processing: ${latexProcessedElements.length} elements`);
+  if (latexProcessedElements.length !== fixedElements.length) {
+    return { ok: false, issues: "公式元素无法渲染" };
+  }
 
-
-  // Process elements, assign unique IDs
-// 处理元素，分配唯一 ID
-  if (latexProcessedElements.length !== fixedElements.length) return null;
   const processedElements = latexProcessedElements.map((el) => ({
     ...el,
-    id: el.id == null || (typeof el.id === 'string' && !el.id.trim()) ? `${el.type}_${nanoid(8)}` : el.id,
+    id: el.id == null || (typeof el.id === "string" && !el.id.trim()) ? `${el.type}_${nanoid(8)}` : el.id,
     rotate: el.rotate ?? 0,
   }));
 
-  // Process background
-// 处理背景
-  const background = generatedData.background;
-
   const result = generatedContentForOutlineSchema(outline).safeParse({
     elements: processedElements,
-    background,
+    background: generatedData.background,
     remark: generatedData.remark || outline.description,
   });
-  return result.success ? result.data : null;
+  return result.success ? { ok: true, value: result.data } : { ok: false, issues: formatSchemaIssues(result.error) };
 }
 
 /**
@@ -470,29 +533,35 @@ async function generateQuizContent(
   }
 
   log.info(`Generating quiz content for: ${outline.title}`);
-  const response = await aiCall(prompts.system, prompts.user);
+  return callAndRepair(aiCall, prompts, (response) => acceptQuizContent(outline, response), outline.title);
+}
+
+/** 解析并校验测验题目。分值的数字字符串会转成数字；缺字段不补。 */
+function acceptQuizContent(
+  outline: QuizSceneOutline,
+  response: string,
+): { ok: true; value: GeneratedQuizContent } | { ok: false; issues: string } {
   const generatedQuestions = parseJsonResponse<unknown[]>(response);
 
   if (!generatedQuestions || !Array.isArray(generatedQuestions)) {
-    log.error(`Failed to parse AI response for: ${outline.title}`);
-    return null;
+    return { ok: false, issues: "响应不是题目数组 JSON" };
   }
 
   log.info(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
 
-  // Ensure each question has an ID and normalize options format
-// 确保每个问题有 ID 并规范化选项格式
   const questions = generatedQuestions.map((raw) => {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
     const q = raw as Record<string, unknown>;
-    const isText = q.type === 'short_answer';
+    const isText = q.type === "short_answer";
     const question: Record<string, unknown> = {
       ...q,
-      id: q.id == null || (typeof q.id === 'string' && !q.id.trim()) ? `q_${nanoid(8)}` : q.id,
+      id: q.id == null || (typeof q.id === "string" && !q.id.trim()) ? `q_${nanoid(8)}` : q.id,
     };
-    for (const key of ['correctAnswer', 'correct_answer', 'hasAnswer']) delete question[key];
+    const points = coerceGeometryValue(q.points);
+    if (points !== undefined) question.points = points;
+    for (const key of ["correctAnswer", "correct_answer", "hasAnswer"]) delete question[key];
     if (isText) {
-      for (const key of ['options', 'answer']) delete question[key];
+      for (const key of ["options", "answer"]) delete question[key];
       return question;
     }
     const options = normalizeQuizOptions(q.options);
@@ -504,7 +573,7 @@ async function generateQuizContent(
   });
 
   const result = generatedContentForOutlineSchema(outline).safeParse({ questions });
-  return result.success ? result.data : null;
+  return result.success ? { ok: true, value: result.data } : { ok: false, issues: formatSchemaIssues(result.error) };
 }
 
 /**
