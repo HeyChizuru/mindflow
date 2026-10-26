@@ -151,12 +151,12 @@ function HomePage() {
   };
 
   return (
-    <div className="relative flex h-dvh max-h-dvh w-full flex-col items-center overflow-hidden bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 px-4 py-4 md:px-8">
+    <div className="mindflow-surface relative flex h-dvh max-h-dvh w-full flex-col items-center overflow-hidden px-4 py-4 text-foreground md:px-8">
       {/* ═══ Top-right pill (unchanged) ═══ */}
       {/* ═══ 右上角工具栏（未改动） ═══ */}
       <div
         ref={toolbarRef}
-        className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-2 py-1.5 rounded-full border border-gray-100/50 dark:border-gray-700/50 shadow-sm"
+        className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-card/70 backdrop-blur-md px-2 py-1.5 rounded-full border border-border/70 shadow-sm"
       >
         {/* Theme Selector */}
         {/* 主题选择器 */}
@@ -312,7 +312,7 @@ function HomePage() {
           transition={{ delay: 0.35 }}
           className="w-full"
         >
-          <div className="w-full rounded-2xl border border-border/60 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-violet-500/[0.06]">
+          <div className="w-full rounded-2xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xl shadow-black/[0.03] dark:shadow-black/20 transition-shadow focus-within:shadow-2xl focus-within:shadow-violet-500/[0.06]">
             {/* ── Greeting + Profile + Agents ── */}
             {/* ── 问候语 + 个人资料 + 智能体 ── */}
             <div className="relative z-20 flex items-start justify-between">

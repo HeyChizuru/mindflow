@@ -12,7 +12,7 @@ export function CanvasArea({ currentScene, quiz, effects, ...toolbar }: CanvasTo
 }) {
   const { t } = useI18n();
   return <div className="@container/classroom flex min-h-0 flex-1 flex-col">
-    <div className="relative min-h-0 flex-1 overflow-hidden bg-muted/40">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       {currentScene ? <SceneProvider scene={currentScene}><SceneRenderer key={currentScene.id} scene={currentScene} quiz={quiz} effects={effects} /></SceneProvider>
         : <p className="p-6 text-sm text-muted-foreground">{t('classroom.noScene')}</p>}
     </div>

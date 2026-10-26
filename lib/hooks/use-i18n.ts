@@ -27,6 +27,7 @@ const MESSAGES: Record<string, string> = {
   "background.readAndContinue": "重新读取并继续",
   "background.runningHint": "可以继续观看和作答，新场景就绪后由你选择。",
   "background.completeHint": "所有场景均已保存。生成完成不代表已经完成观看或测验。",
+  "background.completeSummary": "生成完成不代表已完成观看或测验。",
   "classroom.refreshContent": "刷新课堂内容",
   "classroom.scenePosition": "第 {current} / {total} 场",
   "classroom.sceneProgress": "课程场次进度",

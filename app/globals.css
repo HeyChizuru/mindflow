@@ -130,6 +130,82 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Shared home/classroom palette. Course slide colors remain content-owned. */
+.mindflow-surface {
+  --background: #f8fafc;
+  --foreground: #26334b;
+  --card: #ffffff;
+  --card-foreground: #26334b;
+  --popover: #ffffff;
+  --popover-foreground: #26334b;
+  --muted: #e8edf5;
+  --muted-foreground: #64748b;
+  --secondary: #edf1fa;
+  --secondary-foreground: #4b5b78;
+  --accent: #e9eefb;
+  --accent-foreground: #26334b;
+  --border: #dce3ef;
+  --input: #dce3ef;
+  --ring: #3f63e6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #26334b;
+  --sidebar-primary: #3f63e6;
+  --sidebar-accent: #edf1fa;
+  --surface-start: #f8fafc;
+  --surface-end: #eef2f8;
+  --surface-glow: rgb(63 99 230 / 0.06);
+  --surface-glow-secondary: rgb(139 92 246 / 0.04);
+  --surface-shadow: rgb(28 46 92 / 0.08);
+  --surface-highlight: rgb(255 255 255 / 0.8);
+  color-scheme: light;
+  background-color: var(--background);
+  background-image: linear-gradient(to bottom, var(--surface-start), var(--surface-end));
+}
+
+.dark .mindflow-surface {
+  --background: #080d20;
+  --foreground: #e5eaf5;
+  --card: #11192e;
+  --card-foreground: #e5eaf5;
+  --popover: #161f36;
+  --popover-foreground: #e5eaf5;
+  --muted: #202c45;
+  --muted-foreground: #94a3bd;
+  --secondary: #1b2943;
+  --secondary-foreground: #bccae2;
+  --accent: #1b2943;
+  --accent-foreground: #e5eaf5;
+  --border: rgb(174 192 235 / 0.1);
+  --input: rgb(174 192 235 / 0.14);
+  --sidebar: #0e1529;
+  --sidebar-foreground: #e5eaf5;
+  --sidebar-primary: #a5b4fc;
+  --sidebar-accent: #1b2943;
+  --surface-start: #020617;
+  --surface-end: #0f172a;
+  --surface-glow: rgb(63 99 230 / 0.12);
+  --surface-glow-secondary: rgb(139 92 246 / 0.07);
+  --surface-shadow: rgb(0 0 0 / 0.24);
+  --surface-highlight: rgb(201 214 255 / 0.04);
+  color-scheme: dark;
+}
+
+.classroom-shell {
+  background-image:
+    radial-gradient(ellipse at 45% 0%, var(--surface-glow), transparent 60%),
+    radial-gradient(ellipse at 100% 100%, var(--surface-glow-secondary), transparent 50%),
+    linear-gradient(to bottom, var(--surface-start), var(--surface-end));
+}
+
+.classroom-player {
+  box-shadow: 0 12px 40px var(--surface-shadow), inset 0 1px 0 var(--surface-highlight);
+}
+
+.classroom-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent) transparent;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

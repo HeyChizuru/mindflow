@@ -32,7 +32,16 @@ function GenerationDetails({ state, onRetry }: Pick<GenerationStatusProps, 'stat
 export function BackgroundGenerationNotice({ state, ready, total, onRetry }: GenerationStatusProps) {
   const { t } = useI18n();
   if (state.phase === 'idle') return null;
-  const Icon = state.phase === 'failed' ? CircleAlert : state.phase === 'complete' ? CircleCheck : CircleDashed;
+  if (state.phase === 'complete') return <Alert role="group" aria-label={t('background.title')}
+    data-testid="background-generation" className="min-w-0 rounded-xl p-3 [overflow-wrap:anywhere]">
+    <CircleCheck aria-hidden="true" className="text-classroom-ready" />
+    <AlertTitle className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+      <span>{t('background.phase.complete')}</span>
+      <Badge variant="ready" aria-label={t('background.count', { ready, total })}>{ready} / {total}</Badge>
+    </AlertTitle>
+    <AlertDescription>{t('background.completeSummary')}</AlertDescription>
+  </Alert>;
+  const Icon = state.phase === 'failed' ? CircleAlert : CircleDashed;
   return <Alert role="group" aria-label={t('background.title')} data-testid="background-generation"
     variant={state.phase === 'failed' ? 'destructive' : 'default'} className="min-w-0 [overflow-wrap:anywhere]">
     <Icon aria-hidden="true" />

@@ -16,11 +16,11 @@ export function ClassroomView(props: ClassroomViewProps) {
   const notices = props.notices ?? (props.notice ? [props.notice] : []);
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
   const courseEnd = props.allScenesReady && props.playback === 'ended' && index === directory.length - 1 && index >= 0;
-  return <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-background text-foreground">
+  return <div className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground">
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40 [@media(max-height:500px)]:overflow-y-auto">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
       <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} /></div>
       {pageState !== 'ready' ? <ClassroomStatus state={pageState} generationUrl={props.generationUrl} onRead={props.onRead} /> : <>
         {props.generation && <BackgroundGenerationAnnouncement state={props.generation}

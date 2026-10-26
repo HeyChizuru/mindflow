@@ -24,8 +24,8 @@ export function CanvasToolbar(props: CanvasToolbarProps) {
   const currentScene = sceneCount > 0 ? Math.min(sceneCount, Math.max(1, props.currentSceneIndex + 1)) : 0;
   const sceneProgress = sceneCount > 0 ? (currentScene / sceneCount) * 100 : 0;
   const actionTitle = (label: string, action?: () => void) => t(label) + (action ? '' : '：' + t('classroom.actionUnavailable'));
-  return <div className="flex shrink-0 items-center justify-center bg-muted/40 px-3 py-3 sm:px-5" aria-label={t('classroom.controls')}>
-    <div className="relative grid w-full max-w-[49rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 overflow-hidden rounded-[1.5rem] border border-border/80 bg-background px-2.5 pb-3 pt-2.5 shadow-md shadow-foreground/5 @3xl/classroom:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl/classroom:gap-x-3 @3xl/classroom:rounded-full @3xl/classroom:px-4 @3xl/classroom:py-2.5">
+  return <div className="flex shrink-0 items-center justify-center px-3 py-3 sm:px-5 sm:py-4" aria-label={t('classroom.controls')}>
+    <div className="classroom-player relative grid w-full max-w-[49rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 overflow-hidden rounded-[1.5rem] border border-border bg-card/80 px-2.5 pb-3 pt-2.5 backdrop-blur-xl @3xl/classroom:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl/classroom:gap-x-3 @3xl/classroom:rounded-full @3xl/classroom:px-4 @3xl/classroom:py-2.5">
       <div className="flex min-w-0 items-center gap-2 @3xl/classroom:col-start-1 @3xl/classroom:row-start-1">
         <Button data-testid="classroom-outline-toggle" variant="ghost" size="icon-lg" className="rounded-full bg-muted/70 hover:bg-muted" aria-label={t('classroom.toggleOutline')} title={t('classroom.toggleOutline')} aria-expanded={!props.sidebarCollapsed} onClick={props.onToggleSidebar}><LayoutList /></Button>
         <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground sm:text-sm">{t('classroom.scenePosition', { current: currentScene, total: sceneCount })}</span>

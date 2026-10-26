@@ -117,6 +117,7 @@ export function StaticClassroomPreview() {
       <ClassroomView directory={entries} scene={scene} pageState={pageState} generationUrl={'/generation-preview/' + STAGE_ID}
         playback={playback} subtitle={subtitle} effects={sampleEffects(effect, scene.type === 'quiz')}
         notice={notice} allScenesReady={allReady}
+        generation={allReady ? { phase: 'complete', target: null, failedStep: null, reason: null, error: null, recovery: null } : undefined}
         sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         onSceneSelect={selectScene} onRead={() => setPageState('ready')}
         onPlayPause={() => setPlayback((v) => v === 'playing' ? 'paused' : 'playing')}
