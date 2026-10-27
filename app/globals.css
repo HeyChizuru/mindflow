@@ -206,6 +206,31 @@
   scrollbar-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent) transparent;
 }
 
+/* Scoped to saved chat answers; course slides keep their own typography. */
+.chat-markdown > * + * { margin-top: 0.875rem; }
+.chat-markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.6;
+  margin-top: 1.25rem;
+}
+.chat-markdown > :first-child { margin-top: 0; }
+.chat-markdown :is(ul, ol) { padding-inline-start: 1.4rem; }
+.chat-markdown ul { list-style-type: disc; }
+.chat-markdown ol { list-style-type: decimal; }
+.chat-markdown li + li { margin-top: 0.3rem; }
+.chat-markdown li > :is(ul, ol, p) { margin-top: 0.3rem; }
+.chat-markdown a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+.chat-markdown a:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.chat-markdown blockquote { border-inline-start: 2px solid var(--border); padding-inline-start: 1rem; color: var(--muted-foreground); }
+.chat-markdown code { border-radius: 0.3rem; background: var(--muted); padding: 0.15rem 0.3rem; font-size: 0.85em; }
+.chat-markdown pre { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--muted); padding: 0.875rem; line-height: 1.7; }
+.chat-markdown pre code { padding: 0; background: transparent; white-space: pre; overflow-wrap: normal; }
+.chat-markdown table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.chat-markdown :is(th, td) { min-width: 6rem; border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: start; }
+.chat-markdown th { background: var(--muted); font-weight: 600; }
+.chat-markdown hr { border-color: var(--border); }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

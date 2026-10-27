@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { Header } from '@/components/header';
 import { SceneSidebar } from './scene-sidebar';
@@ -18,11 +18,26 @@ import type { ClassroomViewProps } from './classroom-view-types';
 export function ClassroomView(props: ClassroomViewProps) {
   const { t } = useI18n();
   const chatTrigger = useRef<HTMLButtonElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!props.chat?.state.open) return;
+    const node = shell.current;
+    const viewport = window.visualViewport;
+    const resize = () => node?.style.setProperty('--classroom-viewport-height', (viewport?.height ?? window.innerHeight) + 'px');
+    resize();
+    viewport?.addEventListener('resize', resize);
+    window.addEventListener('resize', resize);
+    return () => {
+      viewport?.removeEventListener('resize', resize);
+      window.removeEventListener('resize', resize);
+      node?.style.removeProperty('--classroom-viewport-height');
+    };
+  }, [props.chat?.state.open]);
   const { scene, directory, pageState = 'ready' } = props;
   const notices = props.notices ?? (props.notice ? [props.notice] : []);
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
   const courseEnd = props.allScenesReady && props.playback === 'ended' && index === directory.length - 1 && index >= 0;
-  return <div className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground">
+  return <div ref={shell} className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
@@ -67,7 +82,7 @@ export function ClassroomView(props: ClassroomViewProps) {
         <PlaybackCaption playback={props.playback} subtitle={props.subtitle} />
       </>}
       </section>
-      {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} onClose={() => {
+      {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} currentSceneTitle={scene?.title ?? ''} onClose={() => {
         props.chat!.onClose(); chatTrigger.current?.focus({ preventScroll: true });
       }} />}
       </div>

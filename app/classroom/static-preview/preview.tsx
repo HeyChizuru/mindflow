@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { ClassroomNotice, PageState, PlaybackDisplay, QuestionDisplay } from '@/components/stage/classroom-view-types';
 import type { QuizFailureCode } from '@/lib/types/classroom';
 import { STAGE_ID, QUIZ_ID, END_ID, slide, tallSlide, unsafeSlide, quizScene, closingScene, directory, questions, sampleRecord, sampleEffects, effectOptions } from './fixtures';
+import { chatModes, chatModeLabels, type ChatPreviewMode, useChatPreview } from './chat-preview';
 
 const pageOptions: [PageState, string][] = [['ready', '可播放'], ['loading', '读取中'], ['draft', '草稿课堂'], ['first_scene_pending', '首场未就绪'], ['not_found', '课堂不存在'], ['invalid_address', '无效地址'], ['read_failed', '读取失败']];
 const playbackOptions: [PlaybackDisplay, string][] = [['idle', '尚未开始'], ['playing', '讲解中'], ['paused', '暂停'], ['ended', '本场结束']];
@@ -38,6 +39,7 @@ export function StaticClassroomPreview() {
   const [isPresenting, setIsPresenting] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const { setTheme } = useTheme();
+  const chatPreview = useChatPreview(() => { setPlayback('paused'); setSidebarCollapsed(true); });
   useEffect(() => {
     const change = () => setIsPresenting(document.fullscreenElement === surfaceRef.current);
     document.addEventListener('fullscreenchange', change);
@@ -98,9 +100,11 @@ export function StaticClassroomPreview() {
       <summary className="cursor-pointer px-4 py-2 text-sm font-semibold">静态演示，不保存或判分 · 展开／收起状态选择</summary>
       <div className="max-h-[25dvh] overflow-y-auto px-4 pb-3">
         <p className="mb-3 text-xs text-muted-foreground">提交只切到“提交中”；结果须手动切换预置样例，与输入正确与否无关。</p>
+        <p className="mb-3 text-xs text-muted-foreground">问答与引用均为展示样例，会话操作只改变内存；不调用接口或模型，刷新还原。跨课堂会话仅展示导航标识。</p>
         <FieldGroup className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           <PreviewSelect label="页面状态" value={pageState} options={pageOptions} onChange={(v) => setPageState(v as PageState)} />
           <PreviewSelect label="播放状态" value={playback} options={playbackOptions} onChange={(v) => setPlayback(v as PlaybackDisplay)} />
+          <PreviewSelect label="问答状态" value={chatPreview.mode} options={chatModes.map((mode, index) => [mode, chatModeLabels[index]])} onChange={(v) => chatPreview.setMode(v as ChatPreviewMode)} />
           <PreviewSelect label="内容样例" value={variant} options={[['wide', '16:9 五类元素'], ['tall', '4:3 画布'], ['unsafe', '受控 HTML 与异常元素']]} onChange={(v) => { setVariant(v); selectScene(slide.id); }} />
           <PreviewSelect label="教学效果" value={effect} options={effectOptions.map((mode, i) => [mode, effectsLabels[i]])} onChange={(v) => setEffect(v as typeof effect)} />
           <PreviewSelect label="测验状态" value={quizMode} options={quizModes.map((mode, i) => [mode, quizLabels[i]])} onChange={(v) => { setQuizMode(v as QuizMode); setOverrides({}); selectScene(QUIZ_ID); }} />
@@ -116,6 +120,7 @@ export function StaticClassroomPreview() {
     <div ref={surfaceRef} className="flex min-h-0 flex-1 flex-col bg-background">
       <ClassroomView directory={entries} scene={scene} pageState={pageState} generationUrl={'/generation-preview/' + STAGE_ID}
         playback={playback} subtitle={subtitle} effects={sampleEffects(effect, scene.type === 'quiz')}
+        chat={chatPreview.chat}
         notice={notice} allScenesReady={allReady}
         generation={allReady ? { phase: 'complete', target: null, failedStep: null, reason: null, error: null, recovery: null } : undefined}
         sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
