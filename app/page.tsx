@@ -10,23 +10,19 @@ import {
   ChevronDown,
   ImagePlus,
   Pencil,
-  Settings,
-  Sun,
-  Moon,
-  Monitor,
   ChevronUp,
 } from "lucide-react";
 import { useI18n } from "@/lib/hooks/use-i18n";
 import { Textarea as UITextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { GenerationToolbar } from "@/components/generation/generation-toolbar";
-import { useTheme } from "@/lib/hooks/use-theme";
 import { useUserProfileStore, AVATAR_OPTIONS } from "@/lib/store/user-profile";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDraftCache } from "@/lib/hooks/use-draft-cache";
 import { buildCreateStageBody, createStage, CreateStageError } from "@/lib/client/stages";
 import { validatePdfFile } from "@/lib/client/pdf";
+import { GlobalControls } from "@/components/global-controls";
 
 interface FormState {
   pdfFile: File | null;
@@ -41,7 +37,6 @@ const initialFormState: FormState = {
 function HomePage() {
   const { t } = useI18n();
   const router = useRouter();
-  const { theme, setTheme, mounted: themeMounted } = useTheme();
   const nickname = useUserProfileStore((s) => s.nickname);
   const bio = useUserProfileStore((s) => s.bio);
   const [form, setForm] = useState<FormState>(initialFormState);
@@ -62,21 +57,8 @@ function HomePage() {
   }, [cachedRequirement]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const [themeOpen, setThemeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (!themeOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setThemeOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [themeOpen]);
 
   const updateForm = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -152,94 +134,7 @@ function HomePage() {
 
   return (
     <div className="mindflow-surface relative flex h-dvh max-h-dvh w-full flex-col items-center overflow-hidden px-4 py-4 text-foreground md:px-8">
-      {/* ═══ Top-right pill (unchanged) ═══ */}
-      {/* ═══ 右上角工具栏（未改动） ═══ */}
-      <div
-        ref={toolbarRef}
-        className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-card/70 backdrop-blur-md px-2 py-1.5 rounded-full border border-border/70 shadow-sm"
-      >
-        {/* Theme Selector */}
-        {/* 主题选择器 */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setThemeOpen(!themeOpen);
-            }}
-            className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all"
-          >
-            {!themeMounted ? (
-              <Monitor className="w-4 h-4" aria-hidden />
-            ) : (
-              <>
-                {theme === "light" && <Sun className="w-4 h-4" />}
-                {theme === "dark" && <Moon className="w-4 h-4" />}
-                {theme === "system" && <Monitor className="w-4 h-4" />}
-              </>
-            )}
-          </button>
-          {themeOpen && (
-            <div className="absolute top-full mt-2 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden z-50 min-w-[140px]">
-              <button
-                onClick={() => {
-                  setTheme('light');
-                  setThemeOpen(false);
-                }}
-                className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'light' &&
-                  'bg-sky-500/10 dark:bg-sky-500/15 text-blue-600 dark:text-blue-400',
-                )}
-              >
-                <Sun className="w-4 h-4" />
-                {t('settings.themeOptions.light')}
-              </button>
-              <button
-                onClick={() => {
-                  setTheme('dark');
-                  setThemeOpen(false);
-                }}
-                className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'dark' &&
-                  'bg-sky-500/10 dark:bg-sky-500/15 text-blue-600 dark:text-blue-400',
-                )}
-              >
-                <Moon className="w-4 h-4" />
-                {t('settings.themeOptions.dark')}
-              </button>
-              <button
-                onClick={() => {
-                  setTheme('system');
-                  setThemeOpen(false);
-                }}
-                className={cn(
-                  'w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2',
-                  theme === 'system' &&
-                  'bg-sky-500/10 dark:bg-sky-500/15 text-blue-600 dark:text-blue-400',
-                )}
-              >
-                <Monitor className="w-4 h-4" />
-                {t('settings.themeOptions.system')}
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
-
-        {/* Settings Button */}
-        {/* 设置按钮 */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => toast.message("模型设置开发中")}
-            className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all group"
-            aria-label="设置"
-          >
-            <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
-          </button>
-        </div>
-      </div>
+      <GlobalControls />
 
       {/* ═══ Background Decor ═══ */}
       {/* ═══ 背景装饰 ═══ */}

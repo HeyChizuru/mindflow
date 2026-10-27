@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { Header } from '@/components/header';
+import { GlobalControls } from '@/components/global-controls';
 import { SceneSidebar } from './scene-sidebar';
 import { CanvasArea } from '@/components/canvas/canvas-area';
 import { PlaybackCaption } from './playback-caption';
@@ -38,11 +39,12 @@ export function ClassroomView(props: ClassroomViewProps) {
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
   const courseEnd = props.allScenesReady && props.playback === 'ended' && index === directory.length - 1 && index >= 0;
   return <div ref={shell} className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
+    <GlobalControls />
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
-      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} /></div>
+      <div className="flex min-w-0 shrink-0 items-center pr-28"><Header currentSceneTitle={scene?.title ?? ''} /></div>
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <section aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
         className={cn('flex min-h-0 min-w-0 flex-1 flex-col', props.chat?.state.open && 'max-lg:overflow-y-auto max-lg:overscroll-contain')}>
