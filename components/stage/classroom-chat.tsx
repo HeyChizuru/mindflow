@@ -124,7 +124,7 @@ export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose
       event.stopPropagation();
       if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); onClose(); }
     }}
-    className="flex h-[65%] min-h-72 min-w-0 shrink-0 flex-col overflow-hidden border-t border-border bg-card/90 max-lg:[@media(max-height:650px)]:h-[75%] lg:h-full lg:w-[min(28rem,44%)] lg:min-w-80 lg:border-t-0 lg:border-l">
+    className="relative z-[60] flex h-full min-h-0 w-[min(28rem,70vw)] min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card shadow-xl lg:w-[min(28rem,36vw)] lg:min-w-80">
     <header className="flex shrink-0 items-center justify-between gap-2 px-4 py-2 lg:py-3">
       <div className="flex min-w-0 items-center gap-2.5">
         <MessageCircle className="size-4 shrink-0 text-primary" aria-hidden="true" />

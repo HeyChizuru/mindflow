@@ -44,8 +44,8 @@ export function ClassroomView(props: ClassroomViewProps) {
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
-      <div className="flex min-w-0 shrink-0 items-center pr-28"><Header currentSceneTitle={scene?.title ?? ''} /></div>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className={cn('flex min-w-0 shrink-0 items-center', props.chat?.state.open ? 'pr-3' : 'pr-28')}><Header currentSceneTitle={scene?.title ?? ''} /></div>
+      <div className="flex min-h-0 flex-1 flex-col">
       <section aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
         className={cn('flex min-h-0 min-w-0 flex-1 flex-col', props.chat?.state.open && 'max-lg:overflow-y-auto max-lg:overscroll-contain')}>
       {pageState !== 'ready' ? <ClassroomStatus state={pageState} generationUrl={props.generationUrl} onRead={props.onRead} /> : <>
@@ -82,10 +82,10 @@ export function ClassroomView(props: ClassroomViewProps) {
         </TooltipTrigger><TooltipContent>{t(props.chat.state.open ? 'chat.close' : 'chat.open')}</TooltipContent></Tooltip>} />
       </>}
       </section>
-      {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} currentSceneTitle={scene?.title ?? ''} onClose={() => {
-        props.chat!.onClose(); chatTrigger.current?.focus({ preventScroll: true });
-      }} />}
       </div>
     </main>
+    {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} currentSceneTitle={scene?.title ?? ''} onClose={() => {
+      props.chat!.onClose(); chatTrigger.current?.focus({ preventScroll: true });
+    }} />}
   </div>;
 }
