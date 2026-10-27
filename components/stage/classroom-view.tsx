@@ -42,14 +42,7 @@ export function ClassroomView(props: ClassroomViewProps) {
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
-      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} />
-        {pageState === 'ready' && props.chat && <Tooltip><TooltipTrigger asChild>
-          <Button ref={chatTrigger} type="button" variant="ghost" size="icon" aria-label={t(props.chat.state.open ? 'chat.close' : 'chat.open')}
-            aria-controls="classroom-chat" aria-expanded={props.chat.state.open} onClick={() => {
-              if (props.chat!.state.open) props.chat!.onClose(); else props.chat!.onOpen();
-            }}><MessageCircle /></Button>
-        </TooltipTrigger><TooltipContent>{t(props.chat.state.open ? 'chat.close' : 'chat.open')}</TooltipContent></Tooltip>}
-      </div>
+      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} /></div>
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <section aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
         className={cn('flex min-h-0 min-w-0 flex-1 flex-col', props.chat?.state.open && 'max-lg:overflow-y-auto max-lg:overscroll-contain')}>
@@ -79,7 +72,12 @@ export function ClassroomView(props: ClassroomViewProps) {
           onNextSegment={props.onNextSegment} onReplay={props.onReplay}
           isPresenting={props.isPresenting} onTogglePresentation={props.onFullscreen} quiz={props.quiz} effects={props.effects} />
         </div>
-        <PlaybackCaption playback={props.playback} subtitle={props.subtitle} />
+        <PlaybackCaption playback={props.playback} subtitle={props.subtitle} chatControl={props.chat && <Tooltip><TooltipTrigger asChild>
+          <Button ref={chatTrigger} type="button" variant="ghost" size="icon" aria-label={t(props.chat.state.open ? 'chat.close' : 'chat.open')}
+            aria-controls="classroom-chat" aria-expanded={props.chat.state.open} onClick={() => {
+              if (props.chat!.state.open) props.chat!.onClose(); else props.chat!.onOpen();
+            }}><MessageCircle /></Button>
+        </TooltipTrigger><TooltipContent>{t(props.chat.state.open ? 'chat.close' : 'chat.open')}</TooltipContent></Tooltip>} />
       </>}
       </section>
       {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} currentSceneTitle={scene?.title ?? ''} onClose={() => {
