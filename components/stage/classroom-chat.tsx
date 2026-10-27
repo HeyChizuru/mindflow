@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { ArrowDown, BookOpen, Check, ChevronDown, FileText, Lightbulb, MapPin, MessageCircle, Plus, RefreshCw, RotateCcw, Send, Wrench, X, LoaderCircle } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, FileText, Lightbulb, MapPin, MessageCircle, Plus, RefreshCw, RotateCcw, Wrench, X, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -202,7 +202,9 @@ export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose
             aria-describedby="classroom-chat-input-hint" onChange={(event) => chat.onChange(event.target.value)}
             placeholder={t(sessions.selected ? 'chat.input' : 'chat.selectFirst')} className="max-h-36 min-h-12 lg:min-h-16 max-lg:[@media(max-height:650px)]:max-h-20 max-lg:[@media(max-height:650px)]:min-h-9" />
           <InputGroupAddon align="block-end" className="justify-end max-lg:[@media(max-height:650px)]:w-auto max-lg:[@media(max-height:650px)]:self-center max-lg:[@media(max-height:650px)]:py-2">
-            <Button type="submit" variant="action" size="sm" disabled={!canSubmit}><Send data-icon="inline-start" />{t('chat.send')}</Button>
+            <Button type="submit" variant="default" size="icon-lg" className="size-10 rounded-full" disabled={!canSubmit} aria-label={t('chat.send')} title={t('chat.send')}>
+              <ArrowUp aria-hidden="true" className="size-5" />
+            </Button>
           </InputGroupAddon>
         </InputGroup>
         <FieldDescription id="classroom-chat-input-hint" className="px-1 text-xs">{t(inputHint)}</FieldDescription>
