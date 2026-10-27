@@ -6,6 +6,10 @@
  * Prompt template identifier
  */
 export type PromptId =
+  | 'chat-router'
+  | 'chat-teacher'
+  | 'chat-memory'
+  | 'chat-context-filter'
   | 'requirements-to-outlines'
   | 'interactive-outlines'
   | 'web-search-query-rewrite'

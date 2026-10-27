@@ -18,6 +18,9 @@ export class ChatError extends Error {
     super(message);
     this.name = "ChatError";
     this.statusCode = code === "INVALID_REQUEST" ? 400 : code === "NOT_FOUND" ? 404
+      : code === "MODEL_CONFIG_MISSING" || code === "TOOL_CONFIG_MISSING" ? 401
+      : code === "LIMIT_EXCEEDED" ? 408 : code === "CANCELLED" ? 409 : code === "MODEL_UNSUPPORTED" ? 422
+      : ["MODEL_FAILED", "TOOL_FAILED", "REPLY_INVALID"].includes(code) ? 502
       : ["NOT_READY", "IDENTITY_CONFLICT", "EXECUTION_ACTIVE", "EXECUTION_CONFLICT", "INVALID_SOURCE"].includes(code) ? 409 : 500;
     this.details = { questionSaved: null, turnId: null, record: null, ...details };
   }
@@ -149,7 +152,7 @@ export function claimChatExecution(input: unknown) { return acquire(input, false
 export function retryChatExecution(input: unknown) { return acquire(input, true); }
 
 /** Both completion and failure enforce the original classroom, scene, turn, execution and deadline. */
-async function finish(input: unknown, complete: boolean): Promise<ChatTurn> {
+async function finish(input: unknown, complete: boolean, expectedSources?: ChatTurn["sources"]): Promise<ChatTurn> {
   const data = complete ? parse(completeChatSchema, input) : parse(failChatSchema, input);
   const key: ChatExecutionKey = { stageId: data.stageId, turnId: data.turnId, sceneId: data.sceneId, executionId: data.executionId };
   let observed: ChatTurn | null = null;
@@ -169,6 +172,13 @@ async function finish(input: unknown, complete: boolean): Promise<ChatTurn> {
         const sourceMap = new Map(sources.map((source) => [source.chunkId, source]));
         if (sourceMap.size !== data.chunkIds.length || sources.some((source) => !chatSourceSchema.safeParse(source).success)) {
           throw new ChatError("INVALID_SOURCE", "回复来源不存在、不可用或不属于本课堂", savedDetails(record));
+        }
+        if (expectedSources && (expectedSources.length !== data.chunkIds.length || expectedSources.some((expected) => {
+          const actual = sourceMap.get(expected.chunkId);
+          return !actual || actual.documentId !== expected.documentId || actual.filename !== expected.filename
+            || actual.page !== expected.page || actual.excerpt !== expected.excerpt;
+        }))) {
+          throw new ChatError("INVALID_SOURCE", "本轮取得的资料已变化，请重试", savedDetails(record));
         }
         writing = true;
         saved = await completeChatTurn(data, data.chunkIds.map((id) => sourceMap.get(id)!), tx);
@@ -195,5 +205,5 @@ async function finish(input: unknown, complete: boolean): Promise<ChatTurn> {
       observed ? savedDetails(observed) : { turnId: key.turnId });
   }
 }
-export function completeChatExecution(input: unknown) { return finish(input, true); }
+export function completeChatExecution(input: unknown, expectedSources?: ChatTurn["sources"]) { return finish(input, true, expectedSources); }
 export function failChatExecution(input: unknown) { return finish(input, false); }

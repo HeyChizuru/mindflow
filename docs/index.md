@@ -45,11 +45,15 @@ flowchart LR
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
 | 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
 | 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
-| 课堂讨论       | draft       | in_progress     | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) |
+| 课堂讨论       | draft       | in_progress     | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
 | 配置模型       | draft       | planned         | —         | [spec](./features/配置模型/spec.md)                                         |
 | 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
 | 文档入库       | accepted    | in_progress     | 创建课堂      | [spec](./features/文档入库/spec.md)                                         |
 
 2026-10-25：课堂讨论采用用户主动展开右侧聊天、系统每轮选择一名教师的契约；相关生成与播放 spec 同步取消 `discussion` 动作。阶段一旧动作清理与教师上下文、阶段二聊天保存与恢复已实施，局部验证及其边界见各阶段 task 的交付记录；LangGraph 与前端问答尚未接入。表中受影响单元的状态对应变更后的规格，原有 plan、tasks 与验收记录保留历史交付证据，不代表完整新契约已交付。
+
+2026-10-26：已编写课堂讨论阶段三 LangGraph 问答链路 task，包含真实教师路由、两个只读工具、引用验证、临时会话记忆、统一预算与后端恢复验收；实施约定待审查，尚未开始实现，不改变上述交付状态。
+
+2026-10-26 后续：经用户授权，阶段三问答后端已实施，真实模型 14 项与真实数据库上的受控故障 41 项验证通过，英中提示词同目录提供；具体交付及全仓类型检查、资料夹具和浏览器未验证边界见阶段三 task。前端问答接线和 UI 细化仍未实施，课堂讨论保持 in_progress。
 

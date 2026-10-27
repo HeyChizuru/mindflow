@@ -24,6 +24,10 @@ export {
 
 // Prompt IDs constant
 export const PROMPT_IDS = {
+  CHAT_ROUTER: 'chat-router',
+  CHAT_TEACHER: 'chat-teacher',
+  CHAT_MEMORY: 'chat-memory',
+  CHAT_CONTEXT_FILTER: 'chat-context-filter',
   REQUIREMENTS_TO_OUTLINES: 'requirements-to-outlines',
   INTERACTIVE_OUTLINES: 'interactive-outlines',
   WEB_SEARCH_QUERY_REWRITE: 'web-search-query-rewrite',

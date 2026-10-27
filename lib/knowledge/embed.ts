@@ -20,6 +20,7 @@ export class EmbeddingDimensionError extends Error {
 export async function embedTexts(
   texts: string[],
   model: EmbeddingModel,
+  options: { abortSignal?: AbortSignal; maxRetries?: number } = {},
 ): Promise<number[][]> {
   if (texts.length === 0) {
     return [];
@@ -28,6 +29,7 @@ export async function embedTexts(
   const { embeddings } = await embedMany({
     model,
     values: texts,
+    ...options,
   });
 
   for (const embedding of embeddings) {
@@ -45,8 +47,9 @@ export async function embedTexts(
 export async function embedQuery(
   text: string,
   model: EmbeddingModel,
+  options: { abortSignal?: AbortSignal; maxRetries?: number } = {},
 ): Promise<number[]> {
-  const [embedding] = await embedTexts([text], model);
+  const [embedding] = await embedTexts([text], model, options);
   if (!embedding) {
     throw new Error("failed to embed query");
   }

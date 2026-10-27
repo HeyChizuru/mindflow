@@ -42,6 +42,20 @@ export async function readChatTurns(stageId: string, filter: { turnId?: string; 
   return rows.map(toTurn);
 }
 
+/** A single statement fixes both visibility and the current question's stable cutoff. */
+export async function readAnswerHistory(key: ChatTurnKey, db: ChatDatabase = prisma) {
+  const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
+    SELECT ${columns} FROM chat_turns AS c
+    JOIN chat_turns AS target ON target.id = ${key.turnId}::uuid
+      AND target.stage_id = ${key.stageId}::uuid AND target.scene_id = ${key.sceneId}::uuid
+    WHERE c.stage_id = target.stage_id AND c.status = 'completed'
+      AND (c.created_at, c.id) < (target.created_at, target.id)
+      AND c.completed_at <= target.execution_started_at
+    ORDER BY c.created_at, c.id
+  `);
+  return rows.map(toTurn);
+}
+
 /** Call inside a short transaction. Read the expiry flag only after acquiring the lock. */
 export async function lockChatTurn(key: ChatTurnKey, db: ChatDatabase) {
   await db.$queryRaw(Prisma.sql`SELECT c.id FROM chat_turns AS c WHERE ${turnWhere(key)} FOR UPDATE`);

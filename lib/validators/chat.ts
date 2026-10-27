@@ -13,6 +13,16 @@ export const readChatSchema = z.object({ stageId: id, turnId: id.optional(), req
 export const chatTurnKeySchema = z.object({ stageId: id, turnId: id, sceneId: id }).strict();
 export const chatExecutionKeySchema = chatTurnKeySchema.extend({ executionId: id }).strict();
 export const retryChatSchema = chatTurnKeySchema.extend({ expectedExecutionId: id }).strict();
+export const chatRequestSchema = z.union([
+  submitChatSchema,
+  retryChatSchema.extend({ action: z.literal("retry") }).strict(),
+]);
+export const chatRouteSchema = z.object({ teacherId: z.enum(CHAT_TEACHER_IDS) }).strict();
+export const readSceneToolSchema = z.object({ sceneId: id }).strict();
+export const searchPdfToolSchema = z.object({ query: z.string().trim().min(1).max(1000) }).strict();
+export const chatAnswerSchema = z.object({
+  reply: nonBlank.pipe(z.string().max(12000)), chunkIds: z.array(id).max(8),
+}).strict().refine((value) => new Set(value.chunkIds).size === value.chunkIds.length, "来源不能重复");
 export const completeChatSchema = chatExecutionKeySchema.extend({
   reply: nonBlank, teacherId: z.enum(CHAT_TEACHER_IDS), chunkIds: z.array(id),
 }).strict().refine((input) => new Set(input.chunkIds).size === input.chunkIds.length, "来源不能重复");

@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { ChatError, getChatHistory, submitChatQuestion } from "@/lib/services/chat";
+import { ChatError, getChatHistory } from "@/lib/services/chat";
+import { answerChat } from "@/lib/chat/answer";
+import { requireChatModel } from "@/lib/ai/openai-compat";
+import { requireEmbeddingModel } from "@/lib/knowledge/embedding-config";
+
+// Includes request preparation and persistence outside the separate 180-second execution lease.
+export const maxDuration = 210;
 
 const headers = { "Cache-Control": "no-store" };
 function failure(error: unknown) {
@@ -20,12 +26,16 @@ export async function GET(request: Request) {
   } catch (error) { return failure(error); }
 }
 
-/** Stage two saves/reconciles questions only. Model execution joins this entry in stage three. */
+/** Restore first; only a claimed execution may call the model. */
 export async function POST(request: Request) {
   try {
     let input: unknown;
     try { input = await request.json(); }
     catch { throw new ChatError("INVALID_REQUEST", "请求正文必须是有效 JSON", { questionSaved: false }); }
-    return NextResponse.json(await submitChatQuestion(input), { headers });
+    return NextResponse.json(await answerChat(input, {
+      resolveModel: async () => (await requireChatModel(request)).chat,
+      resolveEmbedding: async () => (await requireEmbeddingModel(request)).model,
+      signal: request.signal,
+    }), { headers });
   } catch (error) { return failure(error); }
 }
