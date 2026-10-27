@@ -1,7 +1,7 @@
 import "server-only";
-import { APICallError, tool, type LanguageModel, type ModelMessage } from "ai";
+import { APICallError, tool, type LanguageModel, type ModelMessage, type TextStreamPart, type ToolSet } from "ai";
 import { z } from "zod";
-import { callLLM } from "@/lib/ai/llm";
+import { callLLM, streamLLM } from "@/lib/ai/llm";
 import { CHAT_EXECUTION_TTL_MS, type ChatErrorCode, type ChatFailureCode } from "@/lib/types/chat";
 
 export const CHAT_LIMITS = {
@@ -40,18 +40,28 @@ export class ChatBudget {
     this.check();
     return AbortSignal.any([this.signal, AbortSignal.timeout(Math.max(1, Math.min(CHAT_LIMITS.callMs, this.deadline - Date.now())))]);
   }
-  async model(model: LanguageModel, system: string, messages: ModelMessage[], tools?: Parameters<typeof callLLM>[0]["tools"], toolChoice?: Parameters<typeof callLLM>[0]["toolChoice"]) {
+  async model(model: LanguageModel, system: string, messages: ModelMessage[], tools?: Parameters<typeof callLLM>[0]["tools"], toolChoice?: Parameters<typeof callLLM>[0]["toolChoice"], onChunk?: (chunk: TextStreamPart<ToolSet>) => void) {
     this.check();
     if (++this.modelCalls > CHAT_LIMITS.modelCalls || system.length + JSON.stringify(messages).length > CHAT_LIMITS.inputChars) {
       throw new ChatAgentError("LIMIT_EXCEEDED", "本轮模型调用次数或上下文长度已达上限");
     }
     const abortSignal = this.callSignal();
     try {
-      const result = await callLLM({ model, system, messages, tools, toolChoice,
+      const params = { model, system, messages, tools, toolChoice,
         maxRetries: 0, maxOutputTokens: CHAT_LIMITS.outputTokens, abortSignal,
         // No execute callbacks: the graph owns all tool execution and continuation.
         stopWhen: () => true,
-      }, "classroom-chat");
+      };
+      const result = onChunk ? await (async () => {
+        const stream = streamLLM({ ...params, onError: () => {} }, "classroom-chat");
+        for await (const chunk of stream.fullStream) {
+          this.check();
+          if (chunk.type === 'error') throw chunk.error;
+          onChunk(chunk);
+        }
+        return { text: await stream.text, toolCalls: await stream.toolCalls,
+          response: await stream.response, finishReason: await stream.finishReason };
+      })() : await callLLM(params, "classroom-chat");
       this.check();
       if (abortSignal.aborted) throw new ChatAgentError("LIMIT_EXCEEDED", "模型调用超时，本轮未完成");
       if (result.finishReason === "length") throw new ChatAgentError("REPLY_INVALID", "模型输出被截断，本轮未完成", "REPLY_INVALID");

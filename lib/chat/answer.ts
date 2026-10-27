@@ -4,11 +4,12 @@ import { LlmSettingsError } from "@/lib/ai/llm-connection";
 import { ClassroomError } from "@/lib/services/classroom";
 import { ChatError, claimChatExecution, completeChatExecution, failChatExecution, getChatHistory, retryChatExecution, submitChatQuestion } from "@/lib/services/chat";
 import type { ChatSaveResult, ChatTurn } from "@/lib/types/chat";
+import { chatStreamIdentity, type ChatObserver } from '@/lib/types/chat-stream';
 import { chatRequestSchema } from "@/lib/validators/chat";
 import { ChatAgentError, ChatBudget } from "./budget";
 import { runChatGraph } from "./graph";
 
-type Dependencies = { resolveModel: () => Promise<LanguageModel>; resolveEmbedding: () => Promise<EmbeddingModel>; signal: AbortSignal };
+type Dependencies = { resolveModel: () => Promise<LanguageModel>; resolveEmbedding: () => Promise<EmbeddingModel>; signal: AbortSignal; observe?: ChatObserver };
 const response = (record: ChatTurn): ChatSaveResult => ({ success: true, questionSaved: true, record });
 const details = (record: ChatTurn) => ({ questionSaved: true as const, turnId: record.id, record });
 
@@ -35,6 +36,7 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
   } else {
     record = (await submitChatQuestion(request)).record;
   }
+  dependencies.observe?.({ type: 'record', record });
   if (record.status === "completed" || (record.status === "processing" && !record.executionExpired)
     || (!retry && record.status !== "pending")) return response(record);
   if (retry && (record.status === "pending" || record.executionId !== request.expectedExecutionId)) {
@@ -57,14 +59,18 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
     if (error instanceof ChatError && error.code === "EXECUTION_ACTIVE" && error.details.record) return response(error.details.record);
     throw error;
   }
+  dependencies.observe?.({ type: 'start', record });
   const budget = new ChatBudget(record.executionExpiresAt!, dependencies.signal, startedBeforeClaim);
   let result: Awaited<ReturnType<typeof runChatGraph>>;
-  try { result = await runChatGraph(record, { model, budget, resolveEmbedding: dependencies.resolveEmbedding }); }
+  try { result = await runChatGraph(record, { model, budget, resolveEmbedding: dependencies.resolveEmbedding, observe: dependencies.observe }); }
   catch (error) {
     return recordFailure(record, dependencies.signal.aborted
       ? new ChatAgentError("CANCELLED", "本轮已取消，可读取记录后显式重试") : error);
   }
   try {
+    const identity = chatStreamIdentity(record);
+    dependencies.observe?.({ type: 'answer', identity, reply: result.reply, teacherId: result.teacherId });
+    dependencies.observe?.({ type: 'progress', identity, phase: 'saving', teacherId: result.teacherId });
     const saved = await completeChatExecution({ ...key, executionId: record.executionId,
       teacherId: result.teacherId, reply: result.reply, chunkIds: result.chunkIds }, result.sources);
     return response(saved);

@@ -45,7 +45,7 @@ flowchart LR
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
 | 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
 | 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
-| 课堂讨论       | draft       | in_progress     | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) · [阶段四 tasks](./features/课堂讨论/tasks-前后端打通.md) · [阶段四补充 tasks](./features/课堂讨论/tasks-会话管理.md) |
+| 课堂讨论       | draft       | in_progress     | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) · [阶段四 tasks](./features/课堂讨论/tasks-前后端打通.md) · [阶段四补充 tasks](./features/课堂讨论/tasks-会话管理.md) · [阶段五补充 SSE 计划](./features/课堂讨论/plan.md#阶段五补充sse-与逐字呈现) |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
 | 配置模型       | draft       | planned         | —         | [spec](./features/配置模型/spec.md)                                         |
 | 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
@@ -68,4 +68,8 @@ flowchart LR
 2026-10-27 会话管理交付：经用户授权，H1～H5 已实施，旧聊天迁移到历史会话，新建、跨课堂选择、确认删除及会话隔离已接通。25 项数据库 / HTTP、19 项真实数据库受控恢复 / 并发、27 项受控客户端检查通过，完成 7 轮实际模型问答及深浅主题 / 窄屏浏览器验证；仅清理本轮自建夹具，原聊天字段快照一致。证据类型、PDF 文本夹具、全仓既有 41 项类型错误及后台续生成回归边界见[交付记录](./features/课堂讨论/tasks-会话管理.md#交付记录)。阶段五 UI 与阶段六完整验收仍未展开，状态保持 draft / in_progress。
 
 2026-10-27 UI 交付：用户授权阶段五直接实施，不新增 task。已优化聊天布局与消息排版、安全 Markdown、场景提示、滚动、会话列表、独立删除确认、引用与异常反馈，并扩展开发静态预览。真实历史读取与窄屏 / 焦点检查、九种展示状态及定向静态检查的证据和限制见 [阶段五交付记录](./features/课堂讨论/plan.md#阶段五交付记录2026-10-27)。未执行 build；全仓既有 41 项类型错误仍保留，实际模型 / 数据库异常、真实软键盘和阶段六整体验收未在本阶段完成，状态保持 draft / in_progress。
+
+2026-10-27 流式回复规划：用户已确认 GPT 式连续逐字效果：普通问答边生成边传输；触发测验保护检查的轮次先完整生成并通过校验，再逐字展示；只有完整结果经数据库确认后才标为已保存。[spec](./features/课堂讨论/spec.md#流式回复与逐字呈现) 新增 CD-18～CD-20，[plan](./features/课堂讨论/plan.md#阶段五补充sse-与逐字呈现) 在阶段五之后、阶段六之前加入独立 SSE 补充阶段，按正文流能力验证、后端闭环、前端逐字呈现、异常与隔离验证推进。旧 JSON 和 UI 证据仅覆盖当时范围；本轮只更新文档，待审查，未新增 task、未实施或验证 SSE，状态保持 draft / in_progress，阶段六整体验收扩展为 CD-1～CD-20。
+
+2026-10-27 流式回复交付：经用户确认文档并授权继续，阶段五补充已实施，未新增 task。普通问答实时传输并连续逐字显示，测验保护轮次完整校验后再展示；保存确认、真实进度、断流核对和旧流 / 显示队列隔离已接通。35 项受控及 14 项真实 HTTP / 数据库检查通过，共完成 5 轮实际问答，含浏览器失败后显式重试、逐字与历史显示、窄屏验证；自建数据与临时代码已清理。提供商兼容性、证据类别、既有 41 项类型错误及真实 PDF、生产代理、故障和完整回归限制见 [交付记录](./features/课堂讨论/plan.md#阶段五补充交付记录2026-10-27)。未运行 build，阶段六仍待开展，状态保持 draft / in_progress。
 

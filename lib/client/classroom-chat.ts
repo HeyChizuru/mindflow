@@ -1,6 +1,8 @@
 import type { ChatErrorCode, ChatRequest, ChatTurn, SubmitChat } from '@/lib/types/chat';
 import { readChatSchema, submitChatSchema } from '@/lib/validators/chat';
 import { ChatRequestError, readChat, sendChat } from './chat';
+import type { ChatPhase } from '@/lib/types/chat-stream';
+import type { ChatTeacherId } from '@/lib/types/chat';
 
 export type ClassroomChatItem = {
   submission: SubmitChat;
@@ -10,6 +12,7 @@ export type ClassroomChatItem = {
   issue?: 'unsaved' | 'unknown' | 'conflict';
   code?: ChatErrorCode;
   canResubmit?: boolean;
+  preview?: { executionId: string; text: string; phase: ChatPhase; teacherId: ChatTeacherId | null; active: boolean };
 };
 export type ClassroomChatState = {
   open: boolean;
@@ -65,7 +68,7 @@ export class ClassroomChat {
     this.controllers.clear(); this.operations.clear();
     // Strict Mode may start this same instance again; in-flight outcomes are unknown, not failed.
     this.state = { ...this.state, reading: false, items: Object.fromEntries(Object.entries(this.state.items)
-      .map(([id, item]) => [id, { ...item, busy: false, checking: false,
+      .map(([id, item]) => [id, { ...item, busy: false, checking: false, preview: undefined,
         ...(item.busy ? { issue: 'unknown' as const } : {}) }])) };
   };
   open = () => { this.patch({ open: true }); void this.refresh(); };
@@ -92,7 +95,9 @@ export class ClassroomChat {
         && old.executionId === record.executionId && old.executionExpired && !record.executionExpired)) return false;
     const submission = { stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId, requestId: id, question: record.question };
     const sameFailure = record.status === 'failed' && old?.status === 'failed' && old.executionId === record.executionId;
+    const preview = item?.preview?.executionId === record.executionId ? item.preview : undefined;
     this.patch({ items: { ...this.state.items, [id]: { ...item, submission, record,
+      preview: preview && record.status === 'completed' ? { ...preview, text: record.reply!, active: false } : preview,
       busy: item?.busy ?? false, checking: item?.checking ?? false, issue: undefined,
       code: sameFailure && item?.code !== 'READ_FAILED' && item?.code !== 'SAVE_UNKNOWN' ? item?.code : undefined, canResubmit: false } },
       ...(this.state.draftRequestId === id ? { draft: '', draftRequestId: null } : {}) });
@@ -139,12 +144,30 @@ export class ClassroomChat {
     if (!this.active || this.state.unavailable || this.operations.has(id)) return;
     const epoch = this.epoch;
     this.operations.add(id); this.touch(id);
-    this.update(id, { busy: true, code: undefined, issue: undefined, canResubmit: false });
+    this.update(id, { busy: true, code: undefined, issue: undefined, canResubmit: false, preview: undefined });
     const controller = this.controller();
     try {
       let headers: HeadersInit = {};
       try { headers = this.headers(hasKnowledgeBase); } catch { /* Let the server preserve the question and report missing configuration. */ }
-      const record = await sendChat(request, headers, controller.signal);
+      const record = await sendChat(request, headers, controller.signal, (event) => {
+        if (!this.current(epoch) || this.state.unavailable || this.state.items[id]?.record?.status === 'completed') return;
+        this.touch(id);
+        if (event.type === 'record' || event.type === 'start') {
+          if (!this.merge(event.record)) return;
+          if (event.type === 'start') this.update(id, { preview: { executionId: event.record.executionId!,
+            text: '', phase: 'preparing', teacherId: null, active: true } });
+          return;
+        }
+        const preview = this.state.items[id]?.preview;
+        if (!preview || preview.executionId !== event.identity.executionId) return;
+        if (event.type === 'progress') this.update(id, { preview: { ...preview, phase: event.phase,
+          teacherId: event.teacherId ?? preview.teacherId } });
+        else if (event.type === 'answer') this.update(id, { preview: { ...preview, text: event.reply, teacherId: event.teacherId } });
+        else {
+          if (preview.text.length + event.text.length > 12000) throw new ChatRequestError();
+          this.update(id, { preview: { ...preview, text: preview.text + event.text } });
+        }
+      });
       if (!this.current(epoch)) return;
       this.touch(id);
       this.merge(record);
@@ -156,6 +179,7 @@ export class ClassroomChat {
       if (payload?.record && !this.merge(payload.record)) return;
       const record = this.state.items[id]?.record;
       if (record?.status !== 'completed') this.update(id, {
+        preview: undefined,
         code: payload?.code,
         issue: payload?.code === 'IDENTITY_CONFLICT' ? 'conflict'
           : payload?.code === 'SAVE_UNKNOWN' || !payload || payload.questionSaved === null || !record && payload.questionSaved !== false ? 'unknown'
@@ -163,7 +187,11 @@ export class ClassroomChat {
       });
     } finally {
       this.controllers.delete(controller);
-      if (this.current(epoch)) { this.operations.delete(id); this.update(id, { busy: false }); }
+      if (this.current(epoch)) {
+        this.operations.delete(id);
+        const preview = this.state.items[id]?.preview;
+        this.update(id, { busy: false, ...(preview ? { preview: { ...preview, active: false } } : {}) });
+      }
     }
   }
 

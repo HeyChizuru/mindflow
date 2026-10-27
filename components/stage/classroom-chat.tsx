@@ -18,6 +18,7 @@ import { CHAT_TEACHERS } from '@/lib/types/chat';
 import type { ClassroomDirectoryEntry } from '@/lib/types/classroom';
 import type { ClassroomChatItem } from '@/lib/client/classroom-chat';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { useChatTypewriter } from '@/lib/hooks/use-chat-typewriter';
 import type { ChatPresentation } from './classroom-view-types';
 import { ChatSessionList } from './chat-session-list';
 import { ChatMarkdown } from './chat-markdown';
@@ -28,6 +29,7 @@ function itemStatus(item: ClassroomChatItem) {
   if (item.record?.status === 'completed') return 'chat.saved';
   if (item.checking) return 'chat.checking';
   if (item.issue) return 'chat.' + item.issue;
+  if (item.busy && item.preview) return 'chat.phase.' + item.preview.phase;
   if (item.busy) return item.record ? 'chat.waitingSaved' : 'chat.waiting';
   if (item.record?.status === 'processing' && item.record.executionExpired) return 'chat.expired';
   return 'chat.' + (item.record?.status ?? 'unknown');
@@ -39,7 +41,10 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
   const { t } = useI18n();
   const { record } = item;
   const completed = record?.status === 'completed';
-  const TeacherIcon = record?.teacherId ? teacherIcons[record.teacherId] : MessageCircle;
+  const teacherId = record?.teacherId ?? item.preview?.teacherId;
+  const TeacherIcon = teacherId ? teacherIcons[teacherId] : MessageCircle;
+  const revealed = useChatTypewriter(completed ? record.reply! : item.preview?.text ?? '',
+    item.preview?.executionId, completed || !item.preview?.active);
   const recoverable = !completed && item.issue !== 'conflict' && (item.issue === 'unsaved' || item.canResubmit
     || !item.issue && (record?.status === 'pending' || record?.status === 'failed' || record?.executionExpired));
   const error = !completed && (item.code ? t('chat.error.' + item.code)
@@ -56,16 +61,16 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
         </Bubble>
       </MessageContent>
     </Message>
-    {completed ? <Message role="article" aria-label={CHAT_TEACHERS[record.teacherId!]}>
+    {(completed || teacherId) && <Message role="article" aria-label={CHAT_TEACHERS[teacherId!]} aria-busy={!completed || revealed.typing}>
       <MessageContent>
         <MessageHeader className="gap-2"><TeacherIcon aria-hidden="true" className="size-4 text-primary" />
-          <span className="text-foreground">{CHAT_TEACHERS[record.teacherId!]}</span>
-          <span className="text-xs font-normal">{t('chat.teacher.' + record.teacherId)}</span>
+          <span className="text-foreground">{CHAT_TEACHERS[teacherId!]}</span>
+          <span className="text-xs font-normal">{t('chat.teacher.' + teacherId)}</span>
         </MessageHeader>
         <Bubble variant="ghost" className="w-full"><BubbleContent className="w-full">
-          <ChatMarkdown>{record.reply!}</ChatMarkdown>
+          <ChatMarkdown streaming={(!!item.preview?.active && item.preview.phase === 'answering') || revealed.typing}>{revealed.text}</ChatMarkdown>
         </BubbleContent></Bubble>
-        {!!record.sources?.length && <details className="group/sources min-w-0 rounded-lg border border-border bg-card/60">
+        {completed && !!record.sources?.length && <details className="group/sources min-w-0 rounded-lg border border-border bg-card/60">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             <FileText aria-hidden="true" className="size-3.5 shrink-0" />
             <span>{t('chat.sources', { count: record.sources.length })}</span>
@@ -78,11 +83,15 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
             </li>)}
           </ol>
         </details>}
-        <MessageFooter><span className="flex items-center gap-1.5 text-xs font-normal"><Check className="size-3" aria-hidden="true" />{t('chat.saved')}</span></MessageFooter>
+        <MessageFooter><span role="status" className="flex items-center gap-1.5 text-xs font-normal">
+          {completed ? <Check className="size-3" aria-hidden="true" /> : <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+          {t(itemStatus(item))}
+        </span></MessageFooter>
       </MessageContent>
-    </Message> : <div className="flex min-w-0 flex-col gap-3">
+    </Message>}
+    {!completed && <div className="flex min-w-0 flex-col gap-3">
       {error ? <Alert variant="destructive"><AlertTitle>{t(itemStatus(item))}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>
-        : <p role="status" className="flex items-center gap-2 text-xs leading-5 text-muted-foreground">
+        : !teacherId && <p role="status" className="flex items-center gap-2 text-xs leading-5 text-muted-foreground">
           {(item.busy || item.checking) && <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" />}
           {t(itemStatus(item))}
         </p>}
