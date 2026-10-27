@@ -197,7 +197,7 @@ export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose
           <MapPin className="size-3 shrink-0" aria-hidden="true" /><span className="shrink-0">{t('chat.context')}</span>
           <span className="truncate">{currentSceneTitle || t('chat.sceneUnavailable')}</span>
         </div>
-        <InputGroup className="max-lg:[@media(max-height:650px)]:has-[>[data-align=block-end]]:flex-row">
+        <InputGroup className="has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-lg:[@media(max-height:650px)]:has-[>[data-align=block-end]]:flex-row">
           <InputGroupTextarea ref={input} id="classroom-chat-input" rows={2} value={chat.state.draft} disabled={!chat.canSend}
             aria-describedby="classroom-chat-input-hint" onChange={(event) => chat.onChange(event.target.value)}
             placeholder={t(sessions.selected ? 'chat.input' : 'chat.selectFirst')} className="max-h-36 min-h-12 lg:min-h-16 max-lg:[@media(max-height:650px)]:max-h-20 max-lg:[@media(max-height:650px)]:min-h-9" />
