@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { CHAT_FAILURE_CODES, CHAT_TEACHER_IDS } from "@/lib/types/chat";
+import { CHAT_ERROR_CODES, CHAT_FAILURE_CODES, CHAT_TEACHER_IDS } from "@/lib/types/chat";
 
 const id = z.uuid().transform((value) => value.toLowerCase());
 const nonBlank = z.string().refine((value) => value.trim().length > 0, "内容不能为空");
 const timestamp = z.iso.datetime();
 
 export const submitChatSchema = z.object({
-  stageId: id, sceneId: id, requestId: id, question: z.string().trim().min(1),
+  stageId: id, sessionId: id, sceneId: id, requestId: id, question: z.string().trim().min(1),
 }).strict();
-export const readChatSchema = z.object({ stageId: id, turnId: id.optional(), requestId: id.optional() }).strict()
+export const readChatSchema = z.object({ stageId: id, sessionId: id, turnId: id.optional(), requestId: id.optional() }).strict()
   .refine((input) => !(input.turnId && input.requestId), "轮次与请求身份只能选择一个");
-export const chatTurnKeySchema = z.object({ stageId: id, turnId: id, sceneId: id }).strict();
+export const chatTurnKeySchema = z.object({ stageId: id, sessionId: id, turnId: id, sceneId: id }).strict();
 export const chatExecutionKeySchema = chatTurnKeySchema.extend({ executionId: id }).strict();
 export const retryChatSchema = chatTurnKeySchema.extend({ expectedExecutionId: id }).strict();
 export const chatRequestSchema = z.union([
@@ -32,7 +32,7 @@ export const chatSourceSchema = z.object({
 }).strict();
 
 export const chatTurnSchema = z.object({
-  id, stageId: id, sceneId: id, requestId: id, question: nonBlank,
+  id, stageId: id, sessionId: id, sceneId: id, requestId: id, question: nonBlank,
   status: z.enum(["pending", "processing", "failed", "completed"]),
   reply: nonBlank.nullable(), teacherId: z.enum(CHAT_TEACHER_IDS).nullable(),
   sources: z.array(chatSourceSchema).nullable(), failureCode: z.enum(CHAT_FAILURE_CODES).nullable(),
@@ -55,3 +55,13 @@ export const chatTurnSchema = z.object({
     context.addIssue({ code: "custom", message: "聊天状态与保存内容不一致" });
   }
 });
+
+export const chatSaveResultSchema = z.object({
+  success: z.literal(true), questionSaved: z.literal(true), record: chatTurnSchema,
+}).strict();
+export const chatReadResultSchema = z.object({ success: z.literal(true), records: z.array(chatTurnSchema) }).strict();
+export const chatErrorResponseSchema = z.object({
+  success: z.literal(false), code: z.enum(CHAT_ERROR_CODES), error: nonBlank,
+  questionSaved: z.boolean().nullable(), turnId: id.nullable(), record: chatTurnSchema.nullable(),
+}).strict().refine((value) => !value.record || value.questionSaved === true && value.turnId === value.record.id,
+  "错误记录与保存身份不一致");

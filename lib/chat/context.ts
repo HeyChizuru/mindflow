@@ -94,7 +94,7 @@ export async function prepareChatContext(record: ChatTurn, model: LanguageModel,
   budget.check();
   const teaching = projectTeachingContext({ stageId: record.stageId, sceneId: record.sceneId }, classroom);
   const questions = protectedQuestions(classroom);
-  const saved = await readAnswerHistory({ stageId: record.stageId, sceneId: record.sceneId, turnId: record.id });
+  const saved = await readAnswerHistory({ stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId, turnId: record.id });
   const pool = historyCandidates(saved, record);
   const candidates = pool.map((turn) => ({ id: turn.id, text: JSON.stringify({ question: turn.question, reply: turn.reply, sceneId: turn.sceneId }) }));
   const allowed = await filterCandidates(candidates, questions, model, budget);

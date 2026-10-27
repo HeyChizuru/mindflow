@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { readChatTurns, insertChatTurn, lockChatTurn, claimChatTurn, completeChatTurn, failChatTurn } from "@/lib/db/queries/chat";
 import { getChatSourcesByChunkIds } from "@/lib/db/queries/chunks";
 import { getStageById } from "@/lib/db/queries/stages";
+import { lockChatSession, readChatSessions, touchChatSession } from "@/lib/db/queries/chat-sessions";
 import { ClassroomError, getLockedPlayableScene } from "@/lib/services/classroom";
 import type { ChatTurn, SubmitChat, ChatClaimResult, ChatSaveResult, ChatReadResult,
   ChatErrorCode, ChatErrorDetails, ChatErrorResponse, ChatExecutionKey } from "@/lib/types/chat";
@@ -17,7 +18,7 @@ export class ChatError extends Error {
   constructor(readonly code: ChatErrorCode, message: string, details: Partial<ChatErrorDetails> = {}) {
     super(message);
     this.name = "ChatError";
-    this.statusCode = code === "INVALID_REQUEST" ? 400 : code === "NOT_FOUND" ? 404
+    this.statusCode = code === "INVALID_REQUEST" ? 400 : code === "NOT_FOUND" || code === "SESSION_UNAVAILABLE" ? 404
       : code === "MODEL_CONFIG_MISSING" || code === "TOOL_CONFIG_MISSING" ? 401
       : code === "LIMIT_EXCEEDED" ? 408 : code === "CANCELLED" ? 409 : code === "MODEL_UNSUPPORTED" ? 422
       : ["MODEL_FAILED", "TOOL_FAILED", "REPLY_INVALID"].includes(code) ? 502
@@ -35,7 +36,7 @@ function savedDetails(record: ChatTurn): ChatErrorDetails {
   return { questionSaved: true, turnId: record.id, record };
 }
 function checkIdentity(record: ChatTurn, input: SubmitChat): ChatTurn {
-  if (record.stageId !== input.stageId || record.requestId !== input.requestId
+  if (record.stageId !== input.stageId || record.sessionId !== input.sessionId || record.requestId !== input.requestId
     || record.sceneId !== input.sceneId || record.question !== input.question) {
     throw new ChatError("IDENTITY_CONFLICT", "该请求身份已用于其他问题或场景，请核对已保存记录", savedDetails(record));
   }
@@ -45,14 +46,19 @@ function conflict(record: ChatTurn): never {
   throw new ChatError("EXECUTION_CONFLICT", "执行身份或状态已变化，请恢复最新记录", savedDetails(record));
 }
 
+async function requireSession(key: { stageId: string; sessionId: string }, tx: Parameters<typeof lockChatSession>[1]) {
+  if (!await lockChatSession(key, tx)) throw new ChatError("SESSION_UNAVAILABLE", "会话已不存在或不属于本课堂");
+}
+
 /** Read-only snapshot. Does not need model configuration and never resumes an execution. */
 export async function getChatHistory(input: unknown): Promise<ChatReadResult> {
-  const { stageId, ...filter } = parse(readChatSchema, input);
+  const { stageId, sessionId, ...filter } = parse(readChatSchema, input);
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SET TRANSACTION READ ONLY`;
       if (!await getStageById(stageId, tx)) throw new ChatError("NOT_FOUND", "课堂不存在");
-      const records = await readChatTurns(stageId, filter, tx);
+      if (!(await readChatSessions({ stageId, sessionId }, tx)).length) throw new ChatError("SESSION_UNAVAILABLE", "会话已不存在或不属于本课堂");
+      const records = await readChatTurns(stageId, sessionId, filter, tx);
       return { success: true, records };
     }, { isolationLevel: "RepeatableRead" });
   } catch (error) {
@@ -70,16 +76,19 @@ export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult
   let existingRecord: ChatTurn | null = null;
   try {
     const record = await prisma.$transaction(async (tx) => {
-      const existing = (await readChatTurns(data.stageId, { requestId: data.requestId }, tx))[0];
+      const initial = (await readChatTurns(data.stageId, data.sessionId, { requestId: data.requestId }, tx))[0];
+      if (!initial) await getLockedPlayableScene(data.stageId, data.sceneId, tx);
+      await requireSession(data, tx);
+      const existing = (await readChatTurns(data.stageId, data.sessionId, { requestId: data.requestId }, tx))[0];
       identityChecked = true;
       if (existing) {
         existingRecord = checkIdentity(existing, data);
         return existingRecord;
       }
-      await getLockedPlayableScene(data.stageId, data.sceneId, tx);
       writing = true;
       const created = await insertChatTurn({ ...data, turnId }, tx);
-      const saved = created ?? (await readChatTurns(data.stageId, { requestId: data.requestId }, tx))[0];
+      if (created) await touchChatSession(data, tx);
+      const saved = created ?? (await readChatTurns(data.stageId, data.sessionId, { requestId: data.requestId }, tx))[0];
       if (!saved) throw new Error("Missing saved chat turn");
       return checkIdentity(saved, data);
     }, { isolationLevel: "ReadCommitted" });
@@ -95,8 +104,9 @@ export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult
     });
     // A commit acknowledgement can be lost. Always reconcile before claiming success/failure.
     let recovered: ChatTurn | undefined;
-    try { recovered = (await readChatTurns(data.stageId, { requestId: data.requestId }))[0]; }
-    catch {
+    try { recovered = (await getChatHistory({ stageId: data.stageId, sessionId: data.sessionId, requestId: data.requestId })).records[0]; }
+    catch (readError) {
+      if (readError instanceof ChatError && readError.code === "SESSION_UNAVAILABLE") throw readError;
       throw new ChatError("SAVE_UNKNOWN", "未能确认本轮最新状态，请按请求身份重新读取",
         existingRecord ? savedDetails(existingRecord) : { turnId });
     }
@@ -108,14 +118,15 @@ export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult
 /** Internal only. No transaction is held while a future model or tool runs. */
 async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult> {
   const parsed = retry ? parse(retryChatSchema, input) : { ...parse(chatTurnKeySchema, input), expectedExecutionId: null };
-  const { stageId, turnId, sceneId } = parsed;
-  const key = { stageId, turnId, sceneId };
+  const { stageId, sessionId, turnId, sceneId } = parsed;
+  const key = { stageId, sessionId, turnId, sceneId };
   const expected = parsed.expectedExecutionId;
   const executionId = randomUUID();
   let observed: ChatTurn | null = null;
   let writing = false;
   try {
     return await prisma.$transaction(async (tx) => {
+      await requireSession(key, tx);
       const record = await lockChatTurn(key, tx);
       if (!record) throw new ChatError("NOT_FOUND", "该课堂或场景下没有此轮聊天记录");
       observed = record;
@@ -133,7 +144,7 @@ async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult>
     if (error instanceof ChatError) throw error;
     if (writing) {
       try {
-        const record = (await readChatTurns(stageId, { turnId }))[0];
+        const record = (await getChatHistory({ stageId, sessionId, turnId })).records[0];
         if (record?.sceneId === sceneId) {
           // This invocation generated the identity: only it may recover ownership after an uncertain claim.
           if (record.executionId === executionId && record.status === "processing" && !record.executionExpired) {
@@ -142,7 +153,9 @@ async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult>
           if (record.status === "completed") return { record, ownsExecution: false };
           observed = record;
         }
-      } catch { /* Expose uncertainty, not a raw database error. */ }
+      } catch (readError) {
+        if (readError instanceof ChatError && readError.code === "SESSION_UNAVAILABLE") throw readError;
+      }
     }
     throw new ChatError(writing ? "SAVE_UNKNOWN" : "READ_FAILED", "执行领取结果未确认，请先读取记录",
       observed ? savedDetails(observed) : { turnId });
@@ -154,11 +167,12 @@ export function retryChatExecution(input: unknown) { return acquire(input, true)
 /** Both completion and failure enforce the original classroom, scene, turn, execution and deadline. */
 async function finish(input: unknown, complete: boolean, expectedSources?: ChatTurn["sources"]): Promise<ChatTurn> {
   const data = complete ? parse(completeChatSchema, input) : parse(failChatSchema, input);
-  const key: ChatExecutionKey = { stageId: data.stageId, turnId: data.turnId, sceneId: data.sceneId, executionId: data.executionId };
+  const key: ChatExecutionKey = { stageId: data.stageId, sessionId: data.sessionId, turnId: data.turnId, sceneId: data.sceneId, executionId: data.executionId };
   let observed: ChatTurn | null = null;
   let writing = false;
   try {
     return await prisma.$transaction(async (tx) => {
+      await requireSession(key, tx);
       const record = await lockChatTurn(key, tx);
       if (!record) throw new ChatError("NOT_FOUND", "该课堂或场景下没有此轮聊天记录");
       observed = record;
@@ -193,13 +207,15 @@ async function finish(input: unknown, complete: boolean, expectedSources?: ChatT
     if (error instanceof ChatError) throw error;
     if (writing) {
       try {
-        const record = (await readChatTurns(key.stageId, { turnId: key.turnId }))[0];
+        const record = (await getChatHistory({ stageId: key.stageId, sessionId: key.sessionId, turnId: key.turnId })).records[0];
         if (record?.sceneId === key.sceneId) {
           if (record.executionId === key.executionId
             && (record.status === "completed" || (!complete && record.status === "failed"))) return record;
           observed = record;
         }
-      } catch { /* Caller must reconcile the original round before deciding to retry. */ }
+      } catch (readError) {
+        if (readError instanceof ChatError && readError.code === "SESSION_UNAVAILABLE") throw readError;
+      }
     }
     throw new ChatError(writing ? "SAVE_UNKNOWN" : "READ_FAILED", "回复状态未确认，请先恢复本轮已保存记录",
       observed ? savedDetails(observed) : { turnId: key.turnId });

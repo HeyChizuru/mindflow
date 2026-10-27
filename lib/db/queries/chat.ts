@@ -11,7 +11,7 @@ type ChatRow = Omit<ChatTurn, DateField> & {
   createdAt: Date; updatedAt: Date;
 };
 const columns = Prisma.sql`
-  c.id, c.stage_id AS "stageId", c.scene_id AS "sceneId", c.request_id AS "requestId", c.question,
+  c.id, c.stage_id AS "stageId", c.session_id AS "sessionId", c.scene_id AS "sceneId", c.request_id AS "requestId", c.question,
   c.status, c.reply, c.teacher_id AS "teacherId", c.sources, c.failure_code AS "failureCode",
   c.execution_id AS "executionId", c.execution_started_at AS "executionStartedAt",
   c.execution_expires_at AS "executionExpiresAt", c.completed_at AS "completedAt",
@@ -25,16 +25,17 @@ function toTurn(row: ChatRow): ChatTurn {
 }
 function first(rows: ChatRow[]) { return rows.length ? toTurn(rows[0]) : null; }
 function turnWhere(key: ChatTurnKey) {
-  return Prisma.sql`c.id = ${key.turnId}::uuid AND c.stage_id = ${key.stageId}::uuid AND c.scene_id = ${key.sceneId}::uuid`;
+  return Prisma.sql`c.id = ${key.turnId}::uuid AND c.session_id = ${key.sessionId}::uuid
+    AND c.stage_id = ${key.stageId}::uuid AND c.scene_id = ${key.sceneId}::uuid`;
 }
 function executionWhere(key: ChatExecutionKey) {
   return Prisma.sql`${turnWhere(key)} AND c.execution_id = ${key.executionId}::uuid`;
 }
 
 /** Stable reception order, independent of reply or retry time. Never mutates expiry. */
-export async function readChatTurns(stageId: string, filter: { turnId?: string; requestId?: string } = {}, db: ChatDatabase = prisma) {
+export async function readChatTurns(stageId: string, sessionId: string, filter: { turnId?: string; requestId?: string } = {}, db: ChatDatabase = prisma) {
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
-    SELECT ${columns} FROM chat_turns AS c WHERE c.stage_id = ${stageId}::uuid
+    SELECT ${columns} FROM chat_turns AS c WHERE c.stage_id = ${stageId}::uuid AND c.session_id = ${sessionId}::uuid
       ${filter.turnId ? Prisma.sql`AND c.id = ${filter.turnId}::uuid` : Prisma.empty}
       ${filter.requestId ? Prisma.sql`AND c.request_id = ${filter.requestId}::uuid` : Prisma.empty}
     ORDER BY c.created_at, c.id
@@ -48,7 +49,8 @@ export async function readAnswerHistory(key: ChatTurnKey, db: ChatDatabase = pri
     SELECT ${columns} FROM chat_turns AS c
     JOIN chat_turns AS target ON target.id = ${key.turnId}::uuid
       AND target.stage_id = ${key.stageId}::uuid AND target.scene_id = ${key.sceneId}::uuid
-    WHERE c.stage_id = target.stage_id AND c.status = 'completed'
+      AND target.session_id = ${key.sessionId}::uuid
+    WHERE c.stage_id = target.stage_id AND c.session_id = target.session_id AND c.status = 'completed'
       AND (c.created_at, c.id) < (target.created_at, target.id)
       AND c.completed_at <= target.execution_started_at
     ORDER BY c.created_at, c.id
@@ -65,10 +67,10 @@ export async function lockChatTurn(key: ChatTurnKey, db: ChatDatabase) {
 
 export async function insertChatTurn(input: SubmitChat & { turnId: string }, db: ChatDatabase) {
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
-    INSERT INTO chat_turns AS c (id, stage_id, scene_id, request_id, question, status, created_at, updated_at)
-    VALUES (${input.turnId}::uuid, ${input.stageId}::uuid, ${input.sceneId}::uuid, ${input.requestId}::uuid,
+    INSERT INTO chat_turns AS c (id, stage_id, session_id, scene_id, request_id, question, status, created_at, updated_at)
+    VALUES (${input.turnId}::uuid, ${input.stageId}::uuid, ${input.sessionId}::uuid, ${input.sceneId}::uuid, ${input.requestId}::uuid,
       ${input.question}, 'pending', clock_timestamp(), clock_timestamp())
-    ON CONFLICT (stage_id, request_id) DO NOTHING RETURNING ${columns}
+    ON CONFLICT (session_id, request_id) DO NOTHING RETURNING ${columns}
   `);
   return first(rows);
 }

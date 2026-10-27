@@ -96,6 +96,8 @@ model Stage {
 
   chatTurns ChatTurn[]
 
+  chatSessions ChatSession[]
+
   @@map("stage")
 }
 
@@ -153,10 +155,27 @@ model QuizSubmission {
   @@map("quiz_submissions")
 }
 
+model ChatSession {
+  id String @id @default(uuid()) @db.Uuid
+  stageId String @map("stage_id") @db.Uuid
+  isHistory Boolean @default(false) @map("is_history")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt DateTime @default(now()) @map("last_used_at") @db.Timestamptz(3)
+
+  stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  turns ChatTurn[]
+
+  @@unique([id, stageId])
+  @@index([stageId, lastUsedAt, id])
+  @@index([lastUsedAt, id])
+  @@map("chat_sessions")
+}
+
 /// 一轮问题及至多一份完整回复；状态与执行一致性由增量迁移中的 CHECK 约束保证
 model ChatTurn {
   id String @id @default(uuid()) @db.Uuid
   stageId String @map("stage_id") @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
   sceneId String @map("scene_id") @db.Uuid
   requestId String @map("request_id") @db.Uuid
   question String
@@ -174,9 +193,10 @@ model ChatTurn {
 
   stage Stage @relation(fields: [stageId], references: [id], onDelete: Cascade)
   scene Scene @relation(fields: [sceneId, stageId], references: [id, stageId], onDelete: Cascade)
+  session ChatSession @relation(fields: [sessionId, stageId], references: [id, stageId], onDelete: Cascade)
 
-  @@unique([stageId, requestId])
-  @@index([stageId, createdAt, id])
+  @@unique([sessionId, requestId])
+  @@index([sessionId, createdAt, id])
   @@index([sceneId, stageId])
   @@map("chat_turns")
 }

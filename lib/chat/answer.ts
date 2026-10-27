@@ -16,7 +16,7 @@ async function recordFailure(record: ChatTurn, error: unknown): Promise<never> {
   const safe = error instanceof ChatAgentError ? error : error instanceof ClassroomError
     ? new ChatAgentError("CONTEXT_FAILED", "本轮课程上下文读取失败，请重试")
     : new ChatAgentError("MODEL_FAILED", "本轮问答执行失败，请读取记录后重试", "MODEL_FAILED");
-  const saved = await failChatExecution({ stageId: record.stageId, sceneId: record.sceneId,
+  const saved = await failChatExecution({ stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId,
     turnId: record.id, executionId: record.executionId, failureCode: safe.failureCode });
   throw new ChatError(safe.code, safe.message, details(saved));
 }
@@ -28,7 +28,7 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
   const retry = "action" in request;
   let record: ChatTurn;
   if (retry) {
-    const history = await getChatHistory({ stageId: request.stageId, turnId: request.turnId });
+    const history = await getChatHistory({ stageId: request.stageId, sessionId: request.sessionId, turnId: request.turnId });
     const found = history.records[0];
     if (!found || found.sceneId !== request.sceneId) throw new ChatError("NOT_FOUND", "本课堂或场景下没有该问题");
     record = found;
@@ -48,7 +48,7 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
   }
   if (dependencies.signal.aborted) throw new ChatError("CANCELLED", "本轮已取消，问题仍保留", details(record));
   const startedBeforeClaim = Date.now();
-  const key = { stageId: record.stageId, sceneId: record.sceneId, turnId: record.id };
+  const key = { stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId, turnId: record.id };
   try {
     const claim = retry ? await retryChatExecution({ ...key, expectedExecutionId: request.expectedExecutionId }) : await claimChatExecution(key);
     record = claim.record;
@@ -69,15 +69,18 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
       teacherId: result.teacherId, reply: result.reply, chunkIds: result.chunkIds }, result.sources);
     return response(saved);
   } catch (error) {
+    if (error instanceof ChatError && error.code === "SESSION_UNAVAILABLE") throw error;
     if (error instanceof ChatError && error.code === "INVALID_SOURCE") {
       return recordFailure(record, new ChatAgentError("REPLY_INVALID", error.message, "REPLY_INVALID"));
     }
     // An ambiguous completion must never be followed by another model run or a failure write.
     try {
-      const latest = (await getChatHistory({ stageId: record.stageId, turnId: record.id })).records[0];
+      const latest = (await getChatHistory({ stageId: record.stageId, sessionId: record.sessionId, turnId: record.id })).records[0];
       if (latest?.status === "completed") return response(latest);
       if (latest) record = latest;
-    } catch { /* Preserve uncertainty if readback also fails. */ }
+    } catch (readError) {
+      if (readError instanceof ChatError && readError.code === "SESSION_UNAVAILABLE") throw readError;
+    }
     throw new ChatError("SAVE_UNKNOWN", "教师回复保存状态未确认，请先读取本轮记录", details(record));
   }
 }

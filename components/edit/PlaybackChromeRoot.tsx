@@ -4,21 +4,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ClassroomView } from '@/components/stage/classroom-view';
 import type { PlaybackDisplay, TeachingEffect } from '@/components/stage/classroom-view-types';
 import { useClassroom } from '@/lib/hooks/use-classroom';
+import { useClassroomChat } from '@/lib/hooks/use-classroom-chat';
 import { PlaybackEngine } from '@/lib/playback';
 import { ActionEngine } from '@/lib/action/engine';
 
 type PlayingState = { sceneId: string; run: number; phase: PlaybackDisplay; subtitle: string | null;
   effects: TeachingEffect[]; actionNotice: string | null };
 
-export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
+export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stageId: string; chatSelection?: string; chatOpen?: boolean }) {
   const { session, state } = useClassroom(stageId);
+  const { chat, state: chatState, sessions } = useClassroomChat(stageId, chatSelection, chatOpen);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isPresenting, setIsPresenting] = useState(false);
   const [playing, setPlaying] = useState<PlayingState | null>(null);
   const engineRef = useRef<PlaybackEngine | null>(null);
+  const firstPlayback = useRef(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const data = state.classroom;
   const scene = data?.scenes.find((item) => item.id === state.sceneId) ?? null;
+
+  useEffect(() => {
+    const narrow = window.matchMedia('(max-width: 1023px)');
+    const collapseForChat = () => { if (narrow.matches && chat.getSnapshot().open) setSidebarCollapsed(true); };
+    narrow.addEventListener('change', collapseForChat);
+    return () => narrow.removeEventListener('change', collapseForChat);
+  }, [chat]);
 
   useEffect(() => {
     if (!scene) return;
@@ -40,8 +50,10 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
     });
     engineRef.current = engine;
     engine.start();
+    if (firstPlayback.current && chat.getSnapshot().open) engine.pause();
+    firstPlayback.current = false;
     return () => { active = false; engine.stop(); if (engineRef.current === engine) engineRef.current = null; };
-  }, [scene, state.playbackRun]);
+  }, [scene, state.playbackRun, chat]);
 
   const current = playing && playing.sceneId === scene?.id && playing.run === state.playbackRun ? playing : null;
   const playPause = useCallback(() => {
@@ -71,7 +83,7 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
     const fullscreen = () => setIsPresenting(document.fullscreenElement === stageRef.current);
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey ||
-        event.target instanceof HTMLElement && event.target.closest('input,textarea,select,button,a,[role=radio],[role=checkbox],[contenteditable=true]')) return;
+        event.target instanceof HTMLElement && event.target.closest('[data-classroom-chat],input,textarea,select,button,a,[role=radio],[role=checkbox],[contenteditable=true]')) return;
       if (event.code === 'Space') { event.preventDefault(); playPause(); }
       else if (event.key === 'ArrowLeft') previous();
       else if (event.key === 'ArrowRight') next();
@@ -106,6 +118,25 @@ export function PlaybackChromeRoot({ stageId }: { stageId: string }) {
         });
       }}
       onPlayPause={scene ? playPause : undefined}
+      chat={{ state: chatState, canSend: state.page === 'ready' && !!scene && !!sessions.selected
+          && !sessions.selecting && !sessions.creating && !sessions.deletions[sessions.selected.id],
+        sessions: { state: sessions, onCreate: () => { void chat.create(); }, onSelect: (item) => { void chat.select(item); },
+          onDelete: (item) => { void chat.delete(item); }, onCheckDeletion: (item) => { void chat.checkDeletion(item); },
+          onRefresh: () => { void chat.refreshList(); } },
+        onOpen: () => {
+          engineRef.current?.pause();
+          if (window.matchMedia('(max-width: 1023px)').matches) setSidebarCollapsed(true);
+          chat.open();
+        },
+        onClose: chat.close, onChange: chat.changeDraft,
+        onSend: () => {
+          const snapshot = session.getSnapshot();
+          if (snapshot.page === 'ready' && snapshot.sceneId) void chat.send(snapshot.sceneId, !!snapshot.classroom?.stage.hasKnowledgeBase);
+        },
+        onRefresh: () => { void chat.refresh(); },
+        onRead: (id) => { void chat.readItem(id); },
+        onRecover: (id) => { void chat.recover(id, !!session.getSnapshot().classroom?.stage.hasKnowledgeBase); },
+      }}
       onNextSegment={current?.phase !== 'ended' && scene ? () => engineRef.current?.nextSegment() : undefined}
       onReplay={scene ? session.replay : undefined}
       onPrevious={index > 0 ? previous : undefined} onNext={index >= 0 && index < directory.length - 1 ? next : undefined}

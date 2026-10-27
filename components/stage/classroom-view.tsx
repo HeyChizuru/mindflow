@@ -1,17 +1,23 @@
 'use client';
 
 import Link from 'next/link';
+import { useRef } from 'react';
+import { MessageCircle } from 'lucide-react';
 import { Header } from '@/components/header';
 import { SceneSidebar } from './scene-sidebar';
 import { CanvasArea } from '@/components/canvas/canvas-area';
 import { PlaybackCaption } from './playback-caption';
 import { ClassroomStatus, ClassroomNoticeView, BackgroundGenerationFailure, BackgroundGenerationAnnouncement } from './classroom-status';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ClassroomChatPanel } from './classroom-chat';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { cn } from '@/lib/utils';
 import type { ClassroomViewProps } from './classroom-view-types';
 
 export function ClassroomView(props: ClassroomViewProps) {
   const { t } = useI18n();
+  const chatTrigger = useRef<HTMLButtonElement>(null);
   const { scene, directory, pageState = 'ready' } = props;
   const notices = props.notices ?? (props.notice ? [props.notice] : []);
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
@@ -21,7 +27,17 @@ export function ClassroomView(props: ClassroomViewProps) {
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
-      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} /></div>
+      <div className="flex min-w-0 shrink-0 items-center pr-3"><Header currentSceneTitle={scene?.title ?? ''} />
+        {pageState === 'ready' && props.chat && <Tooltip><TooltipTrigger asChild>
+          <Button ref={chatTrigger} type="button" variant="ghost" size="icon" aria-label={t(props.chat.state.open ? 'chat.close' : 'chat.open')}
+            aria-controls="classroom-chat" aria-expanded={props.chat.state.open} onClick={() => {
+              if (props.chat!.state.open) props.chat!.onClose(); else props.chat!.onOpen();
+            }}><MessageCircle /></Button>
+        </TooltipTrigger><TooltipContent>{t(props.chat.state.open ? 'chat.close' : 'chat.open')}</TooltipContent></Tooltip>}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <section aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
+        className={cn('flex min-h-0 min-w-0 flex-1 flex-col', props.chat?.state.open && 'max-lg:overflow-y-auto max-lg:overscroll-contain')}>
       {pageState !== 'ready' ? <ClassroomStatus state={pageState} generationUrl={props.generationUrl} onRead={props.onRead} /> : <>
         {props.generation && <BackgroundGenerationAnnouncement state={props.generation}
           ready={directory.filter(entry => entry.ready).length} total={directory.length} />}
@@ -41,7 +57,7 @@ export function ClassroomView(props: ClassroomViewProps) {
           </div>}
         </div>}
         </section>}
-        <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:min-h-72">
+        <div className={cn('flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:min-h-72', props.chat?.state.open && 'max-lg:min-h-64')}>
         <CanvasArea currentScene={scene} currentSceneIndex={index} scenesCount={directory.length}
           engineState={props.playback} sidebarCollapsed={props.sidebarCollapsed} onToggleSidebar={props.onToggleSidebar}
           onPrevSlide={props.onPrevious} onNextSlide={props.onNext} onPlayPause={props.onPlayPause}
@@ -50,6 +66,11 @@ export function ClassroomView(props: ClassroomViewProps) {
         </div>
         <PlaybackCaption playback={props.playback} subtitle={props.subtitle} />
       </>}
+      </section>
+      {pageState === 'ready' && props.chat?.state.open && <ClassroomChatPanel chat={props.chat} directory={directory} onClose={() => {
+        props.chat!.onClose(); chatTrigger.current?.focus({ preventScroll: true });
+      }} />}
+      </div>
     </main>
   </div>;
 }

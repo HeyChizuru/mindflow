@@ -2,6 +2,9 @@ import type { Action } from '@/lib/types/action';
 import type { ClassroomDirectoryEntry, QuizAnswer, QuizSubmission } from '@/lib/types/classroom';
 import type { Scene } from '@/lib/types/scene';
 import type { BackgroundGenerationState } from '@/lib/types/stage-generation';
+import type { ClassroomChatState } from '@/lib/client/classroom-chat';
+import type { ChatSessionsState } from '@/lib/client/classroom-chat-sessions';
+import type { ChatSession } from '@/lib/types/chat-session';
 
 export type PageState = 'ready' | 'loading' | 'draft' | 'first_scene_pending' | 'not_found' | 'invalid_address' | 'read_failed';
 export type PlaybackDisplay = 'idle' | 'playing' | 'paused' | 'ended';
@@ -24,6 +27,26 @@ export type QuizPresentation = {
   onSkip?: () => void;
 };
 export type ClassroomNotice = { title: string; message: string; actionLabel?: string; onAction?: () => void };
+export type ChatSessionPresentation = {
+  state: ChatSessionsState;
+  onCreate: () => void;
+  onSelect: (session: ChatSession) => void;
+  onDelete: (session: ChatSession) => void;
+  onCheckDeletion: (session: ChatSession) => void;
+  onRefresh: () => void;
+};
+export type ChatPresentation = {
+  state: ClassroomChatState;
+  sessions: ChatSessionPresentation;
+  canSend: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  onRefresh: () => void;
+  onRead: (requestId: string) => void;
+  onRecover: (requestId: string) => void;
+};
 export interface ClassroomViewProps {
   directory: ClassroomDirectoryEntry[];
   scene: Scene | null;
@@ -33,6 +56,7 @@ export interface ClassroomViewProps {
   subtitle?: string | null;
   effects?: TeachingEffect[];
   quiz?: QuizPresentation;
+  chat?: ChatPresentation;
   notice?: ClassroomNotice | null;
   notices?: ClassroomNotice[];
   generation?: BackgroundGenerationState;
