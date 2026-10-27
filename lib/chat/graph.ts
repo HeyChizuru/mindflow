@@ -45,6 +45,7 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
       return { context, messages: [
         { role: "user" as const, content: JSON.stringify({ referenceContext: {
           course: context.course, scene: context.scene, protectedQuestions: context.protectedQuestions,
+          pendingGrading: context.pendingGrading,
           memory: context.memory, restrictedHistory: context.restrictedHistory,
         } }) },
         ...context.history,
@@ -136,7 +137,9 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
           ...dependencies, stageId: record.stageId, context: state.context, sources,
         });
         messages.push({ role: "tool", content: [{ type: "tool-result", toolCallId: call.toolCallId,
-          toolName: call.toolName, output: { type: "json", value: JSON.parse(JSON.stringify(result)) } }] });
+          toolName: call.toolName, output: { type: "json", value: JSON.parse(JSON.stringify({
+            ...result, pendingGrading: state.context.pendingGrading,
+          })) } }] });
       }
       return { messages: [...state.messages, ...messages], calls: [] };
     })

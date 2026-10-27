@@ -3,7 +3,7 @@ feature_id: 课堂讨论
 artifact: spec
 title: 课堂讨论
 spec_status: draft
-delivery_status: in_progress
+delivery_status: verified
 requires: [课堂播放与测验]
 governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-007]
 related_to: [确认大纲并生成首屏, 后台续生成, 文档入库, 配置模型]
@@ -12,6 +12,8 @@ acceptance: [CD-1, CD-2, CD-3, CD-4, CD-5, CD-6, CD-7, CD-8, CD-9, CD-10, CD-11,
 ---
 
 # 课堂讨论
+
+2026-10-27 最终审查：阶段六完成，CD-1～CD-20 在[最终验收记录](./验收记录.md)所列本轮与分阶段证据范围内通过，交付状态为 verified。spec_status 保持 draft，ADR-007 保持 proposed；二者与实现交付状态独立。下列日期段落保留历史契约变更及当时交付状态，当前结论以本段和验收记录为准。
 
 2026-10-26 会话管理契约变更：新增固定关联课堂的独立会话、跨课堂会话选择及确认后永久删除。此前阶段一至四的交付记录保留，证明的是每课堂一份聊天历史的旧范围，不证明本版会话管理、会话隔离及删除竞态已经实现或通过验收。本版仍为 draft / in_progress，待审查后实施。
 
