@@ -7,7 +7,7 @@ import { useTheme } from '@/lib/hooks/use-theme';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
 
-export function GlobalControls() {
+export function GlobalControls({ chatOpen = false }: { chatOpen?: boolean }) {
   const { t } = useI18n();
   const { theme, setTheme, mounted: themeMounted } = useTheme();
   const [themeOpen, setThemeOpen] = useState(false);
@@ -25,7 +25,8 @@ export function GlobalControls() {
   }, [themeOpen]);
 
   return <div ref={toolbarRef}
-    className="fixed top-4 right-4 z-50 flex items-center gap-1 rounded-full border border-border/70 bg-card/70 px-2 py-1.5 shadow-sm backdrop-blur-md">
+    className={cn('fixed top-4 right-4 z-50 flex items-center gap-1 rounded-full border border-border/70 bg-card/70 px-2 py-1.5 shadow-sm backdrop-blur-md transition-[right] duration-300 ease-in-out motion-reduce:transition-none',
+      chatOpen && 'right-[calc(min(28rem,70vw)_+_1rem)] lg:right-[calc(min(28rem,36vw)_+_1rem)]')}>
     <div className="relative">
       <button type="button" onClick={() => setThemeOpen(!themeOpen)}
         className="rounded-full p-2 text-gray-400 transition-all hover:bg-white hover:text-gray-800 hover:shadow-sm dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200">

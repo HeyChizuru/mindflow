@@ -19,6 +19,7 @@ import type { ClassroomDirectoryEntry } from '@/lib/types/classroom';
 import type { ClassroomChatItem } from '@/lib/client/classroom-chat';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useChatTypewriter } from '@/lib/hooks/use-chat-typewriter';
+import { cn } from '@/lib/utils';
 import type { ChatPresentation } from './classroom-view-types';
 import { ChatSessionList } from './chat-session-list';
 import { ChatMarkdown } from './chat-markdown';
@@ -108,14 +109,14 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
   </div>;
 }
 
-export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose }: {
-  chat: ChatPresentation; directory: ClassroomDirectoryEntry[]; currentSceneTitle: string; onClose: () => void;
+export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitle, onClose }: {
+  chat: ChatPresentation; expanded: boolean; directory: ClassroomDirectoryEntry[]; currentSceneTitle: string; onClose: () => void;
 }) {
   const { t } = useI18n();
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (chat.canSend && window.matchMedia('(min-width: 1024px)').matches) input.current?.focus({ preventScroll: true });
-  }, [chat.canSend, chat.sessions.state.selected?.id]);
+    if (expanded && chat.canSend && window.matchMedia('(min-width: 1024px)').matches) input.current?.focus({ preventScroll: true });
+  }, [expanded, chat.canSend, chat.sessions.state.selected?.id]);
   const items = Object.values(chat.state.items).sort((a, b) => {
     if (a.record && b.record) return a.record.createdAt.localeCompare(b.record.createdAt) || a.record.id.localeCompare(b.record.id);
     return a.record ? -1 : b.record ? 1 : 0;
@@ -128,12 +129,14 @@ export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose
     : !sessions.selected ? 'chat.selectFirst' : sessions.deletions[sessions.selected.id] ? 'chat.sessionLocked'
     : !chat.canSend ? 'chat.sceneUnavailable' : !canSubmit && currentSubmission ? 'chat.submitting' : 'chat.inputHint';
   const initialReading = !sessions.selected && (!sessions.loaded || !!sessions.selecting) && !sessions.error;
-  return <aside id="classroom-chat" aria-labelledby="classroom-chat-title" data-classroom-chat
+  return <aside id="classroom-chat" aria-labelledby="classroom-chat-title" aria-hidden={!expanded} inert={!expanded} data-classroom-chat
     onKeyDown={(event) => {
       event.stopPropagation();
       if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); onClose(); }
     }}
-    className="relative z-[60] flex h-full min-h-0 w-[min(28rem,70vw)] min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card shadow-xl lg:w-[min(28rem,36vw)] lg:min-w-80">
+    className={cn('relative z-[60] flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-card shadow-xl transition-[flex-basis,opacity] duration-300 ease-in-out motion-reduce:transition-none',
+      expanded ? 'basis-[min(28rem,70vw)] border-l border-border opacity-100 lg:basis-[min(28rem,36vw)]' : 'pointer-events-none basis-0 border-l-0 opacity-0')}>
+    {expanded && <>
     <header className="flex shrink-0 items-center justify-between gap-2 px-4 py-2 lg:py-3">
       <div className="flex min-w-0 items-center gap-2.5">
         <MessageCircle className="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -219,5 +222,6 @@ export function ClassroomChatPanel({ chat, directory, currentSceneTitle, onClose
         <FieldDescription id="classroom-chat-input-hint" className="px-1 text-xs">{t(inputHint)}</FieldDescription>
       </Field></FieldGroup>
     </form>
+    </>}
   </aside>;
 }
