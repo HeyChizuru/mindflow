@@ -3,7 +3,7 @@ feature_id: 课堂播放与测验
 artifact: spec
 title: 课堂播放与测验
 spec_status: draft
-delivery_status: planned
+delivery_status: verified
 requires: [确认大纲并生成首屏]
 governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005, adr-006]
 related_to: [后台续生成, 课堂讨论, 配置模型]
@@ -13,7 +13,7 @@ acceptance: [CP-1, CP-2, CP-3, CP-4, CP-5, CP-6, CP-7, CP-8, CP-9, CP-10, CP-11,
 
 # 课堂播放与测验
 
-2026-10-25 契约变更：取消 `discussion` 动作的提示与暂停，新增用户展开聊天时的暂停衔接。此前已验证的是旧契约；本版规格待审查，变更待实现与验证，原有 plan、tasks 和历史验收不作为新行为的交付证据。
+2026-10-25 契约变更：取消 `discussion` 动作的提示与暂停，新增用户展开聊天时的暂停衔接。旧 plan、tasks 和验收记录保留当时范围的证据；新行为及本次用户确认见 [MVP 验收记录](../../MVP验收记录.md)。本单元交付状态为 verified，规格审查状态仍为 draft。
 
 ## 承诺
 

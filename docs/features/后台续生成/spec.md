@@ -3,7 +3,7 @@ feature_id: 后台续生成
 artifact: spec
 title: 后台续生成
 spec_status: draft
-delivery_status: planned
+delivery_status: verified
 requires: [确认大纲并生成首屏]
 governed_by: [intent, adr-001, adr-002, adr-003, adr-004, adr-005]
 related_to: [课堂播放与测验, 文档入库, 配置模型, 课堂讨论]
@@ -13,7 +13,7 @@ acceptance: [BG-1, BG-2, BG-3, BG-4, BG-5, BG-6, BG-7, BG-8, BG-9, BG-10]
 
 # 后台续生成
 
-2026-10-25：此前四阶段交付及 BG-1～BG-10 的验收证据见 [最终验收记录](./验收记录.md)，静态、受控和真实链路的边界分别记录。本次按已确认的课堂问答方向取消 `discussion` 动作生成；旧证据不覆盖该变更，本版规格仍为 draft，变更待实现与验证。原有 plan、tasks 和历史记录保留，后续实施时需对齐新契约。
+2026-10-25：此前四阶段交付及 BG-1～BG-10 的验收证据见 [最终验收记录](./验收记录.md)，静态、受控和真实链路的边界分别记录。此后按已确认的课堂问答方向取消 `discussion` 动作生成；旧证据不覆盖该变更，新行为及本次用户确认见 [MVP 验收记录](../../MVP验收记录.md)。本单元交付状态为 verified，规格审查状态仍为 draft。
 
 ## 承诺
 

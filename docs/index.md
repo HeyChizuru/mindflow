@@ -5,6 +5,7 @@
 # 总需求文档
 
 - [产品意图](./intent.md)：产品边界、主路径、明确不做。
+- [MVP 验收记录](./MVP验收记录.md)：用户确认范围、既有证据及验收边界。
 
 ## 视觉规范
 
@@ -43,13 +44,15 @@ flowchart LR
 | feature_id | spec_status | delivery_status | requires  | 文件                                                                      |
 | ---------- | ----------- | --------------- | --------- | ----------------------------------------------------------------------- |
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
-| 后台续生成      | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
-| 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
+| 后台续生成      | draft       | verified        | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
+| 课堂播放与测验    | draft       | verified        | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
 | 课堂讨论       | draft       | verified        | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) · [阶段四 tasks](./features/课堂讨论/tasks-前后端打通.md) · [阶段四补充 tasks](./features/课堂讨论/tasks-会话管理.md) · [阶段五补充 SSE 计划](./features/课堂讨论/plan.md#阶段五补充sse-与逐字呈现) · [最终验收记录](./features/课堂讨论/验收记录.md) |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
 | 配置模型       | accepted    | verified        | —         | [spec](./features/配置模型/spec.md) · [plan](./features/配置模型/plan.md) · [验收记录](./features/配置模型/验收记录.md) |
-| 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
+| 确认大纲并生成首屏  | draft       | verified        | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
 | 文档入库       | accepted    | verified        | 创建课堂      | [spec](./features/文档入库/spec.md) · [plan](./features/文档入库/plan.md) · [验收记录](./features/文档入库/验收记录.md) |
+
+2026-10-28 MVP 收口：用户确认此前列出的全部验收范围已测试通过；三个单元交付状态更新为 verified，规格审查状态仍为 draft。确认范围、既有证据和限制见 [MVP 验收记录](./MVP验收记录.md)。
 
 2026-10-28 文档入库主路径规划：根据已对齐方向补充生成页先处理 PDF、失败恢复、并发与历史定稿边界，并新增阶段计划；现有后端已有实现与其他功能的部分调用证据，主路径尚未接通，完整验收待开展。扩展后的 spec 与 plan 待审查，状态以 spec frontmatter 为准；未编写 task 或修改业务实现。
 
