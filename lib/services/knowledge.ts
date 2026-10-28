@@ -6,6 +6,8 @@ import { deleteChunksByStageId, insertChunks } from "@/lib/db/queries/chunks";
 import { getDocumentByStageId, updateDocumentParse } from "@/lib/db/queries/documents";
 import { getStageById, setStageHasKnowledgeBase } from "@/lib/db/queries/stages";
 import type { EmbeddingModel } from "ai";
+import { IngestSupersededError, KnowledgeNotFoundError, KnowledgeValidationError } from "@/lib/services/knowledge-errors";
+export { KnowledgeNotFoundError, KnowledgeValidationError } from "@/lib/services/knowledge-errors";
 
 import { splitPagesToChunks } from "@/lib/knowledge/chunk";
 import { EmbeddingDimensionError, embedTexts } from "@/lib/knowledge/embed";
@@ -19,22 +21,6 @@ import {
 /** 解析正文去空白后最少字数，扫描件等低于此值视为无法 ingest */
 const MIN_PARSE_CHARS = 200;
 
-/** ingest 参数或文件不合法（无文档、文件丢失、文本过短等） */
-export class KnowledgeValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "KnowledgeValidationError";
-  }
-}
-
-/** 课堂不存在 */
-export class KnowledgeNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "KnowledgeNotFoundError";
-  }
-}
-
 /**
  * 读取已保存的 PDF，解析、按页切块并写入向量，然后打开 hasKnowledgeBase。
  * 向量化完成前不写库。页数、全文、切块替换与开关在同一事务提交；失败则整单回滚。
@@ -42,7 +28,7 @@ export class KnowledgeNotFoundError extends Error {
  */
 export async function ingestStage(
   stageId: string,
-  options: { embeddingModel: EmbeddingModel },
+  options: { embeddingModel: EmbeddingModel; executionId: string },
 ): Promise<IngestResponse> {
   const parsedId = stageIdSchema.safeParse(stageId);
   if (!parsedId.success) {
@@ -60,7 +46,7 @@ export async function ingestStage(
     throw new KnowledgeValidationError("no document for this stage");
   }
 
-  const filePath = resolveUploadPath(document.storagePath);
+  const filePath = resolveUploadPath(document.storagePath, id);
   let buffer: Buffer;
   try {
     buffer = await readFile(filePath);
@@ -95,6 +81,11 @@ export async function ingestStage(
   }
 
   await prisma.$transaction(async (tx) => {
+    const execution = await tx.$queryRaw<{ executionId: string }[]>`
+      SELECT execution_id::text AS "executionId" FROM ingest_execution
+      WHERE stage_id = ${id}::uuid AND execution_id = ${options.executionId}::uuid
+        AND status = 'processing' AND expires_at > now() FOR UPDATE`;
+    if (!execution.length) throw new IngestSupersededError('ingest execution expired or superseded');
     await updateDocumentParse(
       {
         id: document.id,
@@ -116,6 +107,8 @@ export async function ingestStage(
       tx,
     );
     await setStageHasKnowledgeBase(id, true, tx);
+    await tx.$executeRaw`UPDATE ingest_execution SET status = 'completed', failure_code = NULL, updated_at = now()
+      WHERE stage_id = ${id}::uuid AND execution_id = ${options.executionId}::uuid`;
   });
 
   return ingestResponseSchema.parse({
@@ -152,12 +145,12 @@ async function embedVectors(
 }
 
 /** 把 documents.storage_path 解析到 UPLOAD_DIR 内的绝对路径，拒绝逃逸 */
-function resolveUploadPath(storagePath: string): string {
-  const uploadRoot = path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
-  const resolved = path.resolve(uploadRoot, storagePath);
+function resolveUploadPath(storagePath: string, stageId: string): string {
+  const uploadRoot = path.resolve(process.env.UPLOAD_DIR ?? "./uploads", stageId);
+  const resolved = path.resolve(process.env.UPLOAD_DIR ?? "./uploads", storagePath);
   const relative = path.relative(uploadRoot, resolved);
 
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new KnowledgeValidationError("invalid storage path");
   }
 

@@ -49,7 +49,13 @@ flowchart LR
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
 | 配置模型       | accepted    | verified        | —         | [spec](./features/配置模型/spec.md) · [plan](./features/配置模型/plan.md) · [验收记录](./features/配置模型/验收记录.md) |
 | 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
-| 文档入库       | accepted    | in_progress     | 创建课堂      | [spec](./features/文档入库/spec.md)                                         |
+| 文档入库       | accepted    | verified        | 创建课堂      | [spec](./features/文档入库/spec.md) · [plan](./features/文档入库/plan.md) · [验收记录](./features/文档入库/验收记录.md) |
+
+2026-10-28 文档入库主路径规划：根据已对齐方向补充生成页先处理 PDF、失败恢复、并发与历史定稿边界，并新增阶段计划；现有后端已有实现与其他功能的部分调用证据，主路径尚未接通，完整验收待开展。扩展后的 spec 与 plan 待审查，状态以 spec frontmatter 为准；未编写 task 或修改业务实现。
+
+2026-10-28 文档入库实施：用户确认文档并授权不展开 task 直接实施；已接入生成页及服务端执行状态并应用迁移，真实 PDF / 数据库配合模拟向量模型的受控检查通过。真实模型、HTTP、浏览器、断连和跨模块整体验收仍待完成，详见 [plan](./features/文档入库/plan.md)。
+
+2026-10-28 文档入库收口：经用户授权完成真实 PDF、模型、HTTP 与浏览器主路径联调及事务、隔离、过期和并发检查；补强晚到自动请求的就绪门禁，DI-1～DI-10 本地验收通过，更新为 accepted / verified。原件样例、临时转发设施、故障模拟、测试数据清理、既有类型错误及生产限制见 [验收记录](./features/文档入库/验收记录.md)。未展开 task、未运行 build，本轮提交不推送。
 
 2026-10-28 配置模型规划：已根据用户确认补齐 [spec](./features/配置模型/spec.md) 与 [plan](./features/配置模型/plan.md)，采用顶栏弹窗、对话与向量两套独立配置及当前浏览器保存 API Key；计划接通现有生成、问答和简答批改，向量问题只捕获实际异常并提示。PDF 入库前端接线、向量模型身份匹配和知识库重建不在本次范围。文档待审查，未展开 task、未开始业务实现或运行验收，配置模型保持 draft / planned，其他单元状态不变。
 

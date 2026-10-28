@@ -12,6 +12,7 @@ import { GlobalControls } from '@/components/global-controls';
 import { ModelSettingsButton } from '@/components/model-settings-dialog';
 import { confirmOutlines, getGenerationPreview, generateFirstSceneContent, generateFirstSceneActions, StageGenerationRequestError } from '@/lib/client/generate/stage-generation';
 import { getStage, GetStageError } from '@/lib/client/stages/get-stage';
+import { readIngestState, startIngest } from '@/lib/client/stages/ingest';
 import { formatUserProfile } from '@/lib/generation/prompt-formatters';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { SceneOutline } from '@/lib/types/outline';
@@ -41,6 +42,8 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
   const [languageDirective, setLanguageDirective] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isReading, setIsReading] = useState(true);
+  const [isIngesting, setIsIngesting] = useState(false);
+  const retryIngest = useRef(false);
   const [streamCompleted, setStreamCompleted] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -126,6 +129,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
       setConfirmationError(null);
       setIsStreaming(false);
       setIsReading(true);
+      setIsIngesting(false);
       setStreamCompleted(false);
       setIsConfirmed(false);
       setIsConfirming(false);
@@ -142,12 +146,49 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
           await resumeFirstScene(stage, controller.signal);
           return;
         }
+        const classroom = await getStage(stageId, controller.signal);
+        if (cancelled) return;
+        let knowledgeReady = stage.hasKnowledgeBase;
+        if (classroom.document) {
+          setIsIngesting(true);
+          let status = await readIngestState(stageId, controller.signal);
+          if (cancelled) return;
+          const mayRetry = retryIngest.current;
+          retryIngest.current = false;
+          if (status === 'idle' || (mayRetry && (status === 'failed' || status === 'unknown'))) {
+            try {
+              await startIngest(stageId, controller.signal);
+              status = await readIngestState(stageId, controller.signal);
+            } catch (startError) {
+              if (cancelled) return;
+              try {
+                status = await readIngestState(stageId, controller.signal);
+              } catch {
+                throw new Error('无法确认资料处理结果，请稍后重试以核对');
+              }
+              if (status !== 'ready' && status !== 'processing') throw startError;
+            }
+          }
+          while (status === 'processing') {
+            await new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(() => { controller.signal.removeEventListener('abort', abort); resolve(); }, 2000);
+              const abort = () => { clearTimeout(timer); reject(new Error('cancelled')); };
+              controller.signal.addEventListener('abort', abort, { once: true });
+            });
+            status = await readIngestState(stageId, controller.signal);
+          }
+          if (status === 'unknown') throw new Error('资料处理结果尚未确认，请重试以恢复处理');
+          if (status !== 'ready') throw new Error('资料处理未完成，请检查 PDF 和向量模型设置后重试');
+          knowledgeReady = true;
+          setHasKnowledgeBase(true);
+          setIsIngesting(false);
+        }
         startedStream = true;
         setIsReading(false);
         setIsStreaming(true);
         await streamSceneOutlines(
           stage.stageId,
-          modelRequestHeaders(stage.hasKnowledgeBase),
+          modelRequestHeaders(knowledgeReady),
           {
             onLanguageDirective: (directive) => {
               if (!cancelled) setLanguageDirective(directive);
@@ -185,6 +226,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
           }
         }
         setIsReading(false);
+        setIsIngesting(false);
         setIsStreaming(false);
         setEditorOpen(false);
         setError(caught instanceof Error ? caught.message : STREAM_FAILED);
@@ -257,6 +299,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
 
   const retry = () => {
     if (isConfirmed || isConfirming) return;
+    retryIngest.current = true;
     setRunId((current) => current + 1);
   };
 
@@ -441,6 +484,8 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
                 <h2 className="text-2xl font-bold tracking-tight">
                   {error
                     ? t('generation.generationFailed')
+                    : isIngesting
+                      ? '正在处理课程资料'
                     : isReading
                       ? t('generation.readingOutline')
                     : isStreaming
@@ -449,7 +494,9 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
                 </h2>
                 <p className="text-muted-foreground text-base">
                   {error ??
-                    (isReading
+                    (isIngesting
+                      ? '正在读取并处理 PDF，请稍候。'
+                      : isReading
                       ? t('generation.readingOutlineDesc')
                       : isStreaming
                         ? t(ALL_STEPS[0].description)
