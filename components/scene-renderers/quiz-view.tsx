@@ -14,6 +14,7 @@ import type { QuizAnswer } from '@/lib/types/classroom';
 import type { QuizQuestion } from '@/lib/types/scene';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
+import { ModelSettingsButton } from '@/components/model-settings-dialog';
 
 export function QuizView({ questions, sceneId, stageId, presentation, effects = [] }: {
   questions: QuizQuestion[]; sceneId: string; stageId: string; presentation?: QuizPresentation; effects?: TeachingEffect[];
@@ -91,6 +92,7 @@ export function QuizView({ questions, sceneId, stageId, presentation, effects = 
             </AlertDescription>
           </Alert>}
           <div className="flex flex-wrap gap-2">
+            {!editing && record?.answer.type === 'short_answer' && record.status === 'failed' && record.failureCode !== 'RESULT_SAVE_FAILED' && <ModelSettingsButton />}
             {(!record || editing) && <Button variant="action" disabled={!valid || busy || !!display.issue && display.issue !== 'unsaved' || !p?.onSubmit}
               onClick={() => p?.onSubmit?.(question.id)}>{t(display.submitting ? 'quiz.status.submitting' : 'quiz.submitQuestion')}</Button>}
             {editing && <Button variant="outline" disabled={busy || !p?.onCancel} onClick={() => p?.onCancel?.(question.id)}>{t('quiz.cancelRedo')}</Button>}

@@ -4,6 +4,7 @@ import type { Scene } from "@/lib/types/scene";
 import type { SceneOutline } from "@/lib/types/outline";
 import { generatedContentForOutlineSchema } from "@/lib/validators/scenes";
 import { apiErrorSchema } from "@/lib/validators/stages";
+import { MODEL_ERRORS } from '@/lib/client/llm/errors';
 
 export class StageGenerationRequestError extends Error {
   constructor(message: string, readonly status = 0) {
@@ -11,19 +12,6 @@ export class StageGenerationRequestError extends Error {
     this.name = "StageGenerationRequestError";
   }
 }
-
-const MODEL_ERRORS: Record<string, string> = {
-  "LLM chatModel is not set": "请先配置对话模型",
-  "LLM chat apiKey is not set": "请先配置对话模型密钥",
-  "LLM chat baseUrl is not set": "请先配置对话模型端点",
-  "LLM chat baseUrl is invalid": "对话模型端点无效",
-  "LLM chat baseUrl is not allowed": "对话模型端点不可用",
-  "LLM embeddingModel is not set": "知识库已就绪，请配置向量模型",
-  "LLM embedding apiKey is not set": "请先配置向量模型密钥",
-  "LLM embedding baseUrl is not set": "请先配置向量模型端点",
-  "LLM embedding baseUrl is invalid": "向量模型端点无效",
-  "LLM embedding baseUrl is not allowed": "向量模型端点不可用",
-};
 
 async function readResponse(response: Response, fallback: string): Promise<unknown> {
   let body: unknown;

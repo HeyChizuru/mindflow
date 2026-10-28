@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import type { ChatPresentation } from './classroom-view-types';
 import { ChatSessionList } from './chat-session-list';
 import { ChatMarkdown } from './chat-markdown';
+import { ModelSettingsButton } from '@/components/model-settings-dialog';
 
 const teacherIcons = { explainer: BookOpen, reasoning_coach: Lightbulb, application_coach: Wrench };
 
@@ -97,6 +98,7 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
           {t(itemStatus(item))}
         </p>}
       <div className="flex flex-wrap gap-2">
+        {error && <ModelSettingsButton />}
         <Button type="button" variant={item.issue === 'unknown' ? 'outline' : 'ghost'} size="sm" onClick={onRead} disabled={item.checking}>
           <RefreshCw data-icon="inline-start" />{t('chat.readTurn')}
         </Button>

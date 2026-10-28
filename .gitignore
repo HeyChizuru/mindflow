@@ -35,6 +35,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # 测试阶段写死的模型请求头（含密钥）
 /lib/client/llm/dev-headers.ts

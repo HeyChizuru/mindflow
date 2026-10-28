@@ -47,9 +47,13 @@ flowchart LR
 | 课堂播放与测验    | draft       | planned         | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
 | 课堂讨论       | draft       | verified        | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) · [阶段四 tasks](./features/课堂讨论/tasks-前后端打通.md) · [阶段四补充 tasks](./features/课堂讨论/tasks-会话管理.md) · [阶段五补充 SSE 计划](./features/课堂讨论/plan.md#阶段五补充sse-与逐字呈现) · [最终验收记录](./features/课堂讨论/验收记录.md) |
 | 流式大纲与手改    | accepted    | verified        | 创建课堂      | [spec](./features/流式大纲与手改/spec.md) · [plan](./features/流式大纲与手改/plan.md) |
-| 配置模型       | draft       | planned         | —         | [spec](./features/配置模型/spec.md)                                         |
+| 配置模型       | accepted    | in_progress     | —         | [spec](./features/配置模型/spec.md) · [plan](./features/配置模型/plan.md) · [验收记录](./features/配置模型/验收记录.md) |
 | 确认大纲并生成首屏  | draft       | planned         | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
 | 文档入库       | accepted    | in_progress     | 创建课堂      | [spec](./features/文档入库/spec.md)                                         |
+
+2026-10-28 配置模型规划：已根据用户确认补齐 [spec](./features/配置模型/spec.md) 与 [plan](./features/配置模型/plan.md)，采用顶栏弹窗、对话与向量两套独立配置及当前浏览器保存 API Key；计划接通现有生成、问答和简答批改，向量问题只捕获实际异常并提示。PDF 入库前端接线、向量模型身份匹配和知识库重建不在本次范围。文档待审查，未展开 task、未开始业务实现或运行验收，配置模型保持 draft / planned，其他单元状态不变。
+
+2026-10-28 配置模型实施与状态复核：用户授权不展开 task、直接按 plan 实施，并要求复核状态后提交推送。配置存储与测试、统一弹窗、现有生成 / 问答 / 简答批改的正式配置接线及异常入口已完成，37 项受控检查、真实对话与向量能力测试、弹窗浏览器验证通过。规格已获按 plan 实施确认，更新为 accepted；最近一次联调时数据库连接被拒绝且 Docker 未运行，真实课程、问答、批改和已有知识库的业务联调证据待补齐，delivery_status 保持 in_progress。各阶段状态、证据与剩余验收见 [验收记录](./features/配置模型/验收记录.md)。未运行 build，PDF 入库接线等排除范围不变。
 
 2026-10-25：课堂讨论采用用户主动展开右侧聊天、系统每轮选择一名教师的契约；相关生成与播放 spec 同步取消 `discussion` 动作。阶段一旧动作清理与教师上下文、阶段二聊天保存与恢复已实施，局部验证及其边界见各阶段 task 的交付记录；LangGraph 与前端问答尚未接入。表中受影响单元的状态对应变更后的规格，原有 plan、tasks 与验收记录保留历史交付证据，不代表完整新契约已交付。
 

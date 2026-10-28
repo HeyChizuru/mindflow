@@ -10,6 +10,7 @@ import { CircleCheck, CircleDashed, CircleAlert } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { ClassroomNotice, PageState } from './classroom-view-types';
 import type { BackgroundGenerationState } from '@/lib/types/stage-generation';
+import { ModelSettingsButton } from '@/components/model-settings-dialog';
 
 type GenerationStatusProps = {
   state: BackgroundGenerationState; ready: number; total: number; onRetry?: () => void;
@@ -22,6 +23,7 @@ function GenerationDetails({ state, onRetry }: Pick<GenerationStatusProps, 'stat
       {state.phase === 'failed' ? <>
         <span>{t('background.failedStep', { step: t('background.step.' + (state.failedStep ?? 'reading')) })}</span>
         <span>{state.error ?? t('background.reason.' + state.reason)}</span>
+        {state.reason === 'generation_failed' && <ModelSettingsButton />}
         <Button variant="outline" size="sm" className="self-start" disabled={!onRetry} onClick={onRetry}>
           {t(state.recovery === 'read' ? 'background.readAndContinue' : 'background.retry')}
         </Button>

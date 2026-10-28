@@ -142,9 +142,9 @@ export async function POST(req: NextRequest) {
     let retrievalExcerpts: string | undefined;
     if (stage.hasKnowledgeBase) {
       const { model: embeddingModel } = await requireEmbeddingModel(req);
-      const sources = await retrieve(stageId, requirements.requirement, {
-        embeddingModel,
-      });
+      let sources;
+      try { sources = await retrieve(stageId, requirements.requirement, { embeddingModel }); }
+      catch { return NextResponse.json({ error: '向量模型调用或资料检索失败，本次资料查询未完成，请检查向量配置后重试' }, { status: 502 }); }
       const formatted = formatRetrievalExcerpts(sources).trim();
       if (formatted) {
         retrievalExcerpts = formatted;
@@ -275,8 +275,9 @@ export async function POST(req: NextRequest) {
                 });
                 controller.enqueue(encoder.encode(`data: ${retryEvent}\n\n`));
               }
-            } catch (error) {
-              lastError = error instanceof Error ? error.message : String(error);
+            } catch {
+              // Provider errors may include credentials or an echoed request. Keep them out of logs and SSE.
+              lastError = '对话模型调用失败，请检查对话配置或服务后重试';
               log.warn(`Outlines stream error (attempt ${attempt}): ${lastError}`);
 
               if (attempt <= MAX_STREAM_RETRIES) {
@@ -308,10 +309,10 @@ export async function POST(req: NextRequest) {
             });
             controller.enqueue(encoder.encode(`data: ${errorEvent}\n\n`));
           }
-        } catch (error) {
+        } catch {
           const errorEvent = JSON.stringify({
             type: "error",
-            error: error instanceof Error ? error.message : String(error),
+            error: '对话模型生成未完成，请检查对话配置后重试',
           });
           controller.enqueue(encoder.encode(`data: ${errorEvent}\n\n`));
         } finally {
@@ -341,7 +342,7 @@ export async function POST(req: NextRequest) {
 
     log.error(
       `Outline streaming failed [requirement="${requirementSnippet ?? "unknown"}..."]:`,
-      error,
+      'Request failed',
     );
     return NextResponse.json({ error: "Failed to start outline stream" }, { status: 500 });
   }

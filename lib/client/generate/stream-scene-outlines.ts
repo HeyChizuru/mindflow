@@ -2,6 +2,7 @@ import type { SceneOutline } from "@/lib/types/outline";
 import { DEFAULT_LANGUAGE_DIRECTIVE } from "@/lib/types/outline";
 import { apiErrorSchema } from "@/lib/validators/stages";
 import { sceneOutlineSchema } from "@/lib/validators/outline";
+import { MODEL_ERRORS } from '@/lib/client/llm/errors';
 
 /** 大纲流失败（message 为可读短句，不含堆栈或密钥） */
 export class OutlineStreamError extends Error {
@@ -43,7 +44,7 @@ function readableStreamError(raw: string): string {
   ) {
     return STREAM_FAILED;
   }
-  return STREAM_ERROR_ZH[trimmed] ?? trimmed;
+  return MODEL_ERRORS[trimmed] ?? STREAM_ERROR_ZH[trimmed] ?? trimmed;
 }
 
 function isAbortError(error: unknown): boolean {

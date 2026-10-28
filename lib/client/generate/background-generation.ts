@@ -114,8 +114,13 @@ export class BackgroundGeneration {
         };
         let step: BackgroundGenerationStep = 'content';
         try {
+          const headers = new Headers(this.dependencies.headers(data.stage.hasKnowledgeBase));
+          const chatHeaders = new Headers(headers);
+          for (const key of [...chatHeaders.keys()]) {
+            if (key.startsWith('x-mindflow-llm-embedding-')) chatHeaders.delete(key);
+          }
           this.progress(step, target);
-          const content = await (this.dependencies.content ?? generateSceneContent)(input, this.dependencies.headers(data.stage.hasKnowledgeBase), run.controller.signal);
+          const content = await (this.dependencies.content ?? generateSceneContent)(input, headers, run.controller.signal);
           if (!this.current(run)) return;
           const latest = this.dependencies.current();
           if (latest?.directory.some(entry => entry.outlineId === outline.id && entry.ready)) {
@@ -124,7 +129,7 @@ export class BackgroundGeneration {
           }
           step = 'actions';
           this.progress(step, target);
-          await (this.dependencies.actions ?? generateSceneActions)({ ...input, content: content.content, previousSpeeches }, this.dependencies.headers(false), run.controller.signal);
+          await (this.dependencies.actions ?? generateSceneActions)({ ...input, content: content.content, previousSpeeches }, chatHeaders, run.controller.signal);
           if (!this.current(run)) return;
         } catch (error) {
           if (!this.current(run)) return;

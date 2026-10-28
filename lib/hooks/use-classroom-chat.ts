@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClassroomChatSessions } from '@/lib/client/classroom-chat-sessions';
-import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
+import { modelRequestHeaders } from '@/lib/client/llm/settings';
 
 export function useClassroomChat(stageId: string, selection?: string, openIntent = false) {
   const router = useRouter();
-  const chat = useMemo(() => new ClassroomChatSessions(stageId, outlineRequestHeaders, {
+  const chat = useMemo(() => new ClassroomChatSessions(stageId, modelRequestHeaders, {
     replace: (id, open) => {
       const url = new URL(window.location.href);
       if (url.pathname.toLowerCase() !== '/classroom/' + stageId) return;

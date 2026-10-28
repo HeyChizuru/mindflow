@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Monitor, Moon, Settings, Sun } from 'lucide-react';
-import { toast } from 'sonner';
+import { openModelSettings } from '@/lib/client/llm/settings';
 import { useTheme } from '@/lib/hooks/use-theme';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
@@ -55,7 +55,7 @@ export function GlobalControls({ chatOpen = false }: { chatOpen?: boolean }) {
       </div>}
     </div>
     <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
-    <button type="button" onClick={() => toast.message('模型设置开发中')}
+    <button type="button" onClick={() => { setThemeOpen(false); openModelSettings(); }}
       className="group rounded-full p-2 text-gray-400 transition-all hover:bg-white hover:text-gray-800 hover:shadow-sm dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
       aria-label="设置" title="设置">
       <Settings className="h-4 w-4 transition-transform duration-500 group-hover:rotate-90" />

@@ -257,7 +257,7 @@ SSE 事件：`languageDirective` | `outline` | `done` | `error`（可选 `retry`
 |:---:|---|---|---|
 | 1 | 静态 · 删减 | 先把开源预览拷进参照目录，再从当前路由删掉无关模块 | 为静态清场 |
 | 2 | 静态 · 页面 | 用本地假数据搭流式卡片和大纲编辑器，不发请求 | OL-2、OL-6 的界面 |
-| 3 | 联调 | 接 `GET /api/stages/{id}` 与大纲 SSE。请求头在 `lib/client` 写死，不读 localStorage；首页模型校验留给 [[配置模型]] | OL-1、OL-3、OL-4、OL-5；OL-2、OL-6 接上真实列表 |
+| 3 | 联调 | 接 `GET /api/stages/{id}` 与大纲 SSE。原联调使用写死请求头；2026-10-28 配置模型实施中由 [[配置模型]] 的统一入口替换为浏览器已保存配置，创建草稿课堂不做模型前置拦截 | OL-1、OL-3、OL-4、OL-5；OL-2、OL-6 接上真实列表 |
 
 ```mermaid
 flowchart LR

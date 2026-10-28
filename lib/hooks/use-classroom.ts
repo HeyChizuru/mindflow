@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { ClassroomSession } from '@/lib/client/classroom-session';
-import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
+import { modelRequestHeaders } from '@/lib/client/llm/settings';
 
 export function useClassroom(stageId: string) {
-  const session = useMemo(() => new ClassroomSession(stageId, outlineRequestHeaders), [stageId]);
+  const session = useMemo(() => new ClassroomSession(stageId, modelRequestHeaders), [stageId]);
   useEffect(() => {
     session.start();
     const refreshVisible = () => { if (document.visibilityState === 'visible') void session.refresh(); };

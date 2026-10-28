@@ -7,7 +7,9 @@ import { AlertCircle, ArrowLeft, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OutlinesEditor } from '@/components/generation-preview/outlines-editor';
 import { streamSceneOutlines } from '@/lib/client/generate/stream-scene-outlines';
-import { outlineRequestHeaders } from '@/lib/client/llm/dev-headers';
+import { modelRequestHeaders, modelSettingsSnapshot } from '@/lib/client/llm/settings';
+import { GlobalControls } from '@/components/global-controls';
+import { ModelSettingsButton } from '@/components/model-settings-dialog';
 import { confirmOutlines, getGenerationPreview, generateFirstSceneContent, generateFirstSceneActions, StageGenerationRequestError } from '@/lib/client/generate/stage-generation';
 import { getStage, GetStageError } from '@/lib/client/stages/get-stage';
 import { formatUserProfile } from '@/lib/generation/prompt-formatters';
@@ -29,7 +31,7 @@ function requestMessage(error: unknown): string {
 
 export default function GenerationPreviewPage() {
   const { id } = useParams<{ id: string }>();
-  return <LiveGenerationPreviewPage key={id} stageId={id} />;
+  return <><GlobalControls /><LiveGenerationPreviewPage key={id} stageId={id} /></>;
 }
 
 function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
@@ -83,12 +85,13 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
         userProfile: formatUserProfile(stage.requirements),
       };
       failedStep = 'slide-content';
+      const settings = modelSettingsSnapshot();
       setFirstScenePhase({ step: 'slide-content' });
-      const content = await generateFirstSceneContent(input, outlineRequestHeaders(saved.hasKnowledgeBase), signal);
+      const content = await generateFirstSceneContent(input, modelRequestHeaders(saved.hasKnowledgeBase, settings), signal);
       if (signal.aborted) return;
       failedStep = 'actions';
       setFirstScenePhase({ step: 'actions' });
-      await generateFirstSceneActions({ ...input, outline: content.effectiveOutline, content: content.content, previousSpeeches: [] }, outlineRequestHeaders(false), signal);
+      await generateFirstSceneActions({ ...input, outline: content.effectiveOutline, content: content.content, previousSpeeches: [] }, modelRequestHeaders(false, settings), signal);
       if (!signal.aborted) setFirstScenePhase({ step: 'complete' });
     } catch (caught) {
       if (signal.aborted) return;
@@ -144,7 +147,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
         setIsStreaming(true);
         await streamSceneOutlines(
           stage.stageId,
-          outlineRequestHeaders(stage.hasKnowledgeBase),
+          modelRequestHeaders(stage.hasKnowledgeBase),
           {
             onLanguageDirective: (directive) => {
               if (!cancelled) setLanguageDirective(directive);
@@ -209,7 +212,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
       const saved = await confirmOutlines(
         stageId,
         { outlines, languageDirective, outlineStreamCompleted: true },
-        outlineRequestHeaders(hasKnowledgeBase),
+        modelRequestHeaders(hasKnowledgeBase),
         controller.signal,
       );
       if (controller.signal.aborted) return;
@@ -287,6 +290,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
           </div>
           <div className="relative z-10 flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-8 py-10">
             <FirstSceneProgress phase={firstScenePhase} sceneType={outlines[0].type} onRetry={retryFirstScene} onViewOutline={() => setEditorOpen(true)} onEnterClassroom={enterClassroom} />
+            {firstScenePhase.step === 'error' && <ModelSettingsButton />}
           </div>
         </div>
       </MotionConfig>
@@ -336,6 +340,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
             {confirmationError && (
               <p role="alert" className="mx-auto max-w-2xl text-sm text-destructive">
                 {confirmationError}
+                <span className="mt-2 block"><ModelSettingsButton /></span>
               </p>
             )}
 
@@ -476,6 +481,7 @@ function LiveGenerationPreviewPage({ stageId }: { stageId: string }) {
             </Button>
           ) : null}
         </div>
+        {error && <ModelSettingsButton />}
       </div>
     </div>
   );
