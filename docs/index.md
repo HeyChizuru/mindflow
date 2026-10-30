@@ -36,6 +36,9 @@ flowchart LR
   "确认大纲并生成首屏" --> "后台续生成"
   "确认大纲并生成首屏" --> "课堂播放与测验"
   "课堂播放与测验" --> "课堂讨论"
+  "创建课堂" --> "历史课堂"
+  "确认大纲并生成首屏" --> "历史课堂"
+  "课堂播放与测验" --> "历史课堂"
 ```
 
 
@@ -44,6 +47,7 @@ flowchart LR
 | feature_id | spec_status | delivery_status | requires  | 文件                                                                      |
 | ---------- | ----------- | --------------- | --------- | ----------------------------------------------------------------------- |
 | 创建课堂       | accepted    | verified        | —         | [spec](./features/创建课堂/spec.md) · [plan](./features/创建课堂/plan.md)       |
+| 历史课堂       | accepted    | verified        | 创建课堂、确认大纲并生成首屏、课堂播放与测验 | [spec](./features/历史课堂/spec.md) · [plan 与交付记录](./features/历史课堂/plan.md) |
 | 后台续生成      | draft       | verified        | 确认大纲并生成首屏 | [spec](./features/后台续生成/spec.md) · [plan](./features/后台续生成/plan.md) · [阶段一后端 tasks](./features/后台续生成/tasks-后端地基.md) · [阶段二联调 tasks](./features/后台续生成/tasks-前后端打通.md) · [阶段三 UI tasks](./features/后台续生成/tasks-UI与交互.md) · [阶段四审查 tasks](./features/后台续生成/tasks-审查与修复.md) · [验收记录](./features/后台续生成/验收记录.md) |
 | 课堂播放与测验    | draft       | verified        | 确认大纲并生成首屏 | [spec](./features/课堂播放与测验/spec.md) · [plan](./features/课堂播放与测验/plan.md) · [阶段二 tasks](./features/课堂播放与测验/tasks-范围清理.md) · [阶段三后端 tasks](./features/课堂播放与测验/tasks-后端适配.md) · [阶段四前端静态 tasks](./features/课堂播放与测验/tasks-前端静态.md) · [阶段五联调记录](./features/课堂播放与测验/联调交付记录.md) |
 | 课堂讨论       | draft       | verified        | 课堂播放与测验 | [spec](./features/课堂讨论/spec.md) · [plan](./features/课堂讨论/plan.md) · [阶段一 tasks](./features/课堂讨论/tasks-旧讨论清理与访问边界.md) · [阶段二 tasks](./features/课堂讨论/tasks-聊天保存与恢复.md) · [阶段三 tasks](./features/课堂讨论/tasks-LangGraph问答链路.md) · [阶段四 tasks](./features/课堂讨论/tasks-前后端打通.md) · [阶段四补充 tasks](./features/课堂讨论/tasks-会话管理.md) · [阶段五补充 SSE 计划](./features/课堂讨论/plan.md#阶段五补充sse-与逐字呈现) · [最终验收记录](./features/课堂讨论/验收记录.md) |
@@ -51,6 +55,12 @@ flowchart LR
 | 配置模型       | accepted    | verified        | —         | [spec](./features/配置模型/spec.md) · [plan](./features/配置模型/plan.md) · [验收记录](./features/配置模型/验收记录.md) |
 | 确认大纲并生成首屏  | draft       | verified        | 流式大纲与手改   | [spec](./features/确认大纲并生成首屏/spec.md) · [plan](./features/确认大纲并生成首屏/plan.md) · [阶段一 tasks](./features/确认大纲并生成首屏/tasks-确认大纲.md) · [阶段二后端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-后端.md) · [阶段二前端 tasks](./features/确认大纲并生成首屏/tasks-首屏生成-前端.md) |
 | 文档入库       | accepted    | verified        | 创建课堂      | [spec](./features/文档入库/spec.md) · [plan](./features/文档入库/plan.md) · [验收记录](./features/文档入库/验收记录.md) |
+
+2026-10-30 历史课堂交付与最终收口：用户授权按计划实施且不展开 task；四阶段已完成，列表、搜索、默认收起、按进度进入、重命名和永久删除已接通，补齐文件清理重试与删除 / 上传互斥。63 项真实 HTTP / 数据库 / 文件、9 项受控客户端、真实与受控浏览器操作及后续真实生成 / 流式问答删除竞争完成核对；用户另手动确认独立浏览器验证通过，并明确跳过真实双页面联动补验，跳过项不记为实测通过。状态维持 accepted / verified，用户已授权本次提交与推送。全部自建数据与临时验证代码已清理，原有八张业务表摘要一致；既有 41 项类型错误、证据分类和生产等未覆盖项见 [交付记录](./features/历史课堂/plan.md#交付记录2026-10-30)。未运行 build，其他单元状态不变。
+
+2026-10-30 历史课堂规格确认与路线（规划记录）：用户确认采用 spec 的五项推荐规则，并授权展开 [plan](./features/历史课堂/plan.md)。当时 spec 更新为 accepted，delivery_status 保持 planned，四阶段路线待审查，尚未实施；当前状态以上条和 spec 为准。
+
+2026-10-30 历史课堂初稿记录：已新增 [spec](./features/历史课堂/spec.md)，纳入全部课堂、按进度进入、搜索、折叠、重命名和删除，并同步产品意图与创建课堂边界。当时为 draft / planned，未展开 plan / task；其中待确认规则已在后续获用户接受，当前状态以上条和 spec 为准。
 
 2026-10-28 MVP 收口：用户确认此前列出的全部验收范围已测试通过；三个单元交付状态更新为 verified，规格审查状态仍为 draft。确认范围、既有证据和限制见 [MVP 验收记录](./MVP验收记录.md)。
 

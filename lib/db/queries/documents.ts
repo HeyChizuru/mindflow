@@ -5,8 +5,8 @@ export async function insertDocument(data: {
   stageId: string;
   filename: string;
   storagePath: string;
-}) {
-  return prisma.document.create({ data });
+}, db: Pick<PrismaClient, "document"> = prisma) {
+  return db.document.create({ data });
 }
 
 /** 取该课堂的第一份文档（M1 每课堂最多一份 PDF） */

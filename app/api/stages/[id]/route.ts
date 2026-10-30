@@ -6,6 +6,16 @@ import {
 } from "@/lib/services/stages";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { renameStage } from '@/lib/services/stage-history';
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  let body: unknown;
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: '请求格式无效' }, { status: 400 }); }
+  try { return NextResponse.json(await renameStage(id, body)); }
+  catch (error) { return toErrorResponse(error, '[PATCH /api/stages/[id]]', '重命名失败，请重试'); }
+}
 
 /**
  * 按课堂 id 读回 requirements 与文档摘要。

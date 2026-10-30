@@ -9,11 +9,11 @@ import {
   insertDocument,
 } from "@/lib/db/queries/documents";
 import { deleteStage, getStageById, insertStage } from "@/lib/db/queries/stages";
-import type { CreateStageDocument, CreateStageResponse, DeleteStageResponse } from "@/lib/types/stage";
+import type { CreateStageDocument, CreateStageResponse } from "@/lib/types/stage";
+import type { StageDeletionResult } from "@/lib/types/stage-history";
 import { deriveStageName } from "@/lib/utils/derive-stage-name";
 import {
   createStageBodySchema,
-  deleteStageResponseSchema,
   stageIdSchema,
   stageResponseSchema,
 } from "@/lib/validators/stages";
@@ -71,13 +71,14 @@ export async function createStage(
     const storagePath = `${stage.id}/${filename}`;
     const uploadRoot = process.env.UPLOAD_DIR ?? "./uploads";
     const destDir = path.join(uploadRoot, stage.id);
-    await mkdir(destDir, { recursive: true });
-    await writeFile(path.join(destDir, filename), Buffer.from(await pdf.arrayBuffer()));
-
-    const document = await insertDocument({
-      stageId: stage.id,
-      filename,
-      storagePath,
+    const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+    // Hold the root row through file publication: deletion cannot finish before a late upload.
+    const document = await prisma.$transaction(async tx => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM stage WHERE id = ${stage.id}::uuid FOR UPDATE`;
+      if (!rows.length) throw new StageNotFoundError("课堂已删除，无法保存资料");
+      await mkdir(destDir, { recursive: true });
+      await writeFile(path.join(destDir, filename), pdfBytes);
+      return insertDocument({ stageId: stage.id, filename, storagePath }, tx);
     });
 
     return toStageResponse(stage, {
@@ -86,7 +87,7 @@ export async function createStage(
       storagePath: document.storagePath,
     });
   } catch (error) {
-    await deleteStage(stage.id).catch(() => undefined);
+    await removeStage(stage.id).catch(() => undefined);
     throw error;
   }
 }
@@ -116,25 +117,25 @@ export async function getStage(stageId: string): Promise<CreateStageResponse> {
 }
 
 /**
- * 删除课堂：显式清 chunks、documents、stage，再尽力删除 uploads/{id}。
+ * Idempotent deletion also retries files after the database record has already gone.
  */
-export async function removeStage(stageId: string): Promise<DeleteStageResponse> {
+export async function removeStage(stageId: string): Promise<StageDeletionResult> {
   const id = parseStageId(stageId);
-  const stage = await getStageById(id);
-  if (!stage) {
-    throw new StageNotFoundError("stage not found");
-  }
-  // tx 是 Prisma 的事务对象
-  // 在事务中执行多个操作，确保原子性
+  const uploadDir = resolveUploadDir(id);
   await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM stage WHERE id = ${id}::uuid FOR UPDATE`;
+    if (!rows.length) return;
     await deleteChunksByStageId(id, tx);
     await deleteDocumentsByStageId(id, tx);
     await deleteStage(id, tx);
   });
 
-  await rm(resolveUploadDir(id), { recursive: true, force: true });
-
-  return deleteStageResponseSchema.parse({ id });
+  try {
+    await rm(uploadDir, { recursive: true, force: true });
+    return { id, recordDeleted: true, filesDeleted: true };
+  } catch {
+    return { id, recordDeleted: true, filesDeleted: false };
+  }
 }
 
 /** 把课堂行映射为 DTO。昵称、背景为空则不出现在 requirements 里 */

@@ -1,6 +1,19 @@
 import { createStage, StageValidationError } from "@/lib/services/stages";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { listStageHistory } from '@/lib/services/stage-history';
+
+export async function GET(request: Request) {
+  try {
+    return NextResponse.json(await listStageHistory(Object.fromEntries(new URL(request.url).searchParams)), { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    if (error instanceof ZodError || error instanceof StageValidationError) {
+      return NextResponse.json({ error: error instanceof StageValidationError ? error.message : '历史列表参数无效' }, { status: 400 });
+    }
+    console.error('[GET /api/stages]', error);
+    return NextResponse.json({ error: '读取历史课堂失败，请重试' }, { status: 500 });
+  }
+}
 
 /**
  * 创建课堂。JSON 体为 { requirements }；multipart 的 requirements 是该对象的 JSON 字符串，pdf 可选。

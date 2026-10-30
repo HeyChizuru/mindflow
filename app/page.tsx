@@ -23,6 +23,7 @@ import { useDraftCache } from "@/lib/hooks/use-draft-cache";
 import { buildCreateStageBody, createStage, CreateStageError } from "@/lib/client/stages";
 import { validatePdfFile } from "@/lib/client/pdf";
 import { GlobalControls } from "@/components/global-controls";
+import { ClassroomHistory } from '@/components/home/classroom-history';
 
 interface FormState {
   pdfFile: File | null;
@@ -133,12 +134,12 @@ function HomePage() {
   };
 
   return (
-    <div className="mindflow-surface relative flex h-dvh max-h-dvh w-full flex-col items-center overflow-hidden px-4 py-4 text-foreground md:px-8">
+    <div className="mindflow-surface relative flex h-dvh w-full flex-col items-center overflow-y-auto px-4 py-4 text-foreground md:px-8">
       <GlobalControls />
 
       {/* ═══ Background Decor ═══ */}
       {/* ═══ 背景装饰 ═══ */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div
           className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
           style={{ animationDuration: '4s' }}
@@ -155,7 +156,7 @@ function HomePage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="relative z-20 flex min-h-0 w-full max-w-[800px] flex-1 flex-col items-center justify-center overflow-y-auto"
+        className="relative z-20 flex w-full max-w-[800px] shrink-0 flex-col items-center justify-center py-16 md:pb-16 md:pt-24"
       >
         {/* ── Logo ── */}
         {/* ── 标志 ── */}
@@ -277,7 +278,9 @@ function HomePage() {
 
       </motion.div>
 
-      <div className="shrink-0 pb-1 text-center text-xs text-muted-foreground/40">
+      <ClassroomHistory />
+
+      <div className="relative mt-auto shrink-0 pb-3 text-center text-xs text-muted-foreground/40">
         MindFlow
       </div>
     </div>
