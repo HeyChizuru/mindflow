@@ -11,42 +11,15 @@ export type PromptId =
   | 'chat-memory'
   | 'chat-context-filter'
   | 'requirements-to-outlines'
-  | 'interactive-outlines'
-  | 'web-search-query-rewrite'
   | 'slide-content'
   | 'quiz-content'
   | 'slide-actions'
-  | 'quiz-actions'
-  | 'interactive-actions'
-  | 'simulation-content'
-  | 'diagram-content'
-  | 'code-content'
-  | 'game-content'
-  | 'visualization3d-content'
-  | 'widget-teacher-actions'
-  | 'pbl-actions'
-  | 'agent-system'
-  | 'agent-system-wb-teacher'
-  | 'agent-system-wb-assistant'
-  | 'agent-system-wb-student'
-  | 'director'
-  | 'pbl-design';
+  | 'quiz-actions';
 
 /**
  * Snippet identifier
  */
-export type SnippetId =
-  | 'json-output-rules'
-  | 'element-types'
-  | 'action-types'
-  | 'image-instructions'
-  | 'video-instructions'
-  | 'media-safety-guidelines'
-  | 'slide-image-instructions'
-  | 'slide-generated-image-instructions'
-  | 'slide-video-instructions'
-  | 'speech-guidelines'
-  | 'whiteboard-reference';
+export type SnippetId = 'json-output-rules';
 
 /**
  * Loaded prompt template

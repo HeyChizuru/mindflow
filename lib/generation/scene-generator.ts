@@ -25,24 +25,13 @@ import {
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
 } from './prompt-formatters';
-import type {
-  Action,
-  SpeechAction,
-  WidgetHighlightAction,
-  WidgetSetStateAction,
-  WidgetAnnotationAction,
-} from '@/lib/types/action';
+import type { Action } from '@/lib/types/action';
 import type {
   AgentInfo,
   SceneGenerationContext,
   GeneratedSlideData,
   AICallFn,
-  GenerationResult,
-  GenerationCallbacks,
-  StageStore,
-  TeacherAction,
 } from './pipeline-types';
-import { buildCompleteScene } from './scene-assembly';
 import { generatedContentForOutlineSchema } from '@/lib/validators/scenes';
 import { createLogger } from '@/lib/logger';
 import { SceneGenerationError } from './scene-generation-error';
@@ -66,121 +55,6 @@ export interface SceneActionsOptions {
   userProfile?: string;
   languageDirective?: string;
   requirement?: string;
-}
-
-// ==================== Stage 2: Full Scenes (Two-Step) ====================
-// ==================== 第二阶段：完整场景生成（两步法） ====================
-
-/**
- * Stage 3: Generate full scenes (parallel version)
- * 第三阶段：生成完整场景（并行版本）
- *
- * Two steps:
- * 两步：
- * - Step 3.1: Outline -> Page content (slide/quiz)
- * - 步骤 3.1：大纲 -> 页面内容（幻灯片/测验）
- * - Step 3.2: Content + script -> Action list
- * - 步骤 3.2：内容 + 脚本 -> 动作列表
- *
- * All scenes generated in parallel using Promise.all
- * 使用 Promise.all 并行生成所有场景
- */
-export async function generateFullScenes(
-  sceneOutlines: SceneOutline[],
-  store: StageStore,
-  aiCall: AICallFn,
-  callbacks?: GenerationCallbacks,
-  languageDirective?: string,
-): Promise<GenerationResult<string[]>> {
-  const api = store;
-  const totalScenes = sceneOutlines.length;
-  let completedCount = 0;
-
-  callbacks?.onProgress?.({
-    currentStage: 3,
-    overallProgress: 66,
-    stageProgress: 0,
-    statusMessage: `正在并行生成 ${totalScenes} 个场景...`,
-    scenesGenerated: 0,
-    totalScenes,
-  });
-
-  // Generate all scenes in parallel
-// 并行生成所有场景
-  const results = await Promise.all(
-    sceneOutlines.map(async (outline, index) => {
-      try {
-        const sceneId = await generateSingleScene(outline, api, aiCall, languageDirective);
-
-        // Update progress (not atomic, but sufficient for UI display)
-// 更新进度（非原子操作，但对 UI 显示已足够）
-        completedCount++;
-        callbacks?.onProgress?.({
-          currentStage: 3,
-          overallProgress: 66 + Math.floor((completedCount / totalScenes) * 34),
-          stageProgress: Math.floor((completedCount / totalScenes) * 100),
-          statusMessage: `已完成 ${completedCount}/${totalScenes} 个场景`,
-          scenesGenerated: completedCount,
-          totalScenes,
-        });
-
-        return { success: sceneId !== null, sceneId, index };
-      } catch (error) {
-        completedCount++;
-        callbacks?.onError?.(`Failed to generate scene ${outline.title}: ${error}`);
-        return { success: false, sceneId: null, index };
-      }
-    }),
-  );
-
-  // Collect successful sceneIds in original order
-// 按原始顺序收集成功的 sceneId
-  const sceneIds = results
-    .filter(
-      (r): r is { success: true; sceneId: string; index: number } =>
-        r.success && r.sceneId !== null,
-    )
-    .sort((a, b) => a.index - b.index)
-    .map((r) => r.sceneId);
-
-  return sceneIds.length === totalScenes
-    ? { success: true, data: sceneIds }
-    : { success: false, data: sceneIds, error: 'Some scenes could not be generated or saved' };
-}
-
-/**
- * Generate a single scene (two-step process)
- * 生成单个场景（两步流程）
- *
- * Step 3.1: Generate content
- * 步骤 3.1：生成内容
- * Step 3.2: Generate Actions
- * 步骤 3.2：生成动作
- */
-async function generateSingleScene(
-  outline: SceneOutline,
-  api: StageStore,
-  aiCall: AICallFn,
-  languageDirective?: string,
-): Promise<string | null> {
-  // Step 3.1: Generate content
-// 步骤 3.1：生成内容
-  log.info(`Step 3.1: Generating content for: ${outline.title}`);
-  const content = await generateSceneContent(outline, aiCall, { languageDirective });
-  if (!content) {
-    log.error(`Failed to generate content for: ${outline.title}`);
-    return null;
-  }
-
-  // Step 3.2: Generate Actions
-// 步骤 3.2：生成动作
-  log.info(`Step 3.2: Generating actions for: ${outline.title}`);
-  const actions = await generateSceneActions(outline, content, aiCall, { languageDirective });
-  log.info(`Generated ${actions.length} actions for: ${outline.title}`);
-
-  // Create complete Scene
-// 创建完整场景
-  return createSceneWithActions(outline, content, actions, api);
 }
 
 /**
@@ -762,121 +636,6 @@ function formatQuestionsForPrompt(questions: GeneratedQuizContent['questions']):
 }
 
 /**
- * Convert Ultra Mode teacherActions to standard Actions for playback.
- * 将极速模式的 teacherActions 转换为标准 Actions 用于播放。
- *
- * TeacherAction types: speech, highlight, annotation, setState
- * TeacherAction 类型：speech、highlight、annotation、setState
- * Action types: speech, widget_highlight, widget_setState, widget_annotation
- * Action 类型：speech、widget_highlight、widget_setState、widget_annotation
- *
- * Conversion strategy:
- * 转换策略：
- * - speech → single speech Action
- * - speech → 单个语音 Action
- * - highlight/setState/annotation with content → TWO Actions:
- * - 带内容的 highlight/setState/annotation → 两个 Actions：
- *   1. widget action (visual/state change) - quick, non-blocking
- *   1. 组件动作（视觉/状态变化）— 快速、非阻塞
- *   2. speech action (narration)
- *   2. 语音动作（旁白）— PlaybackEngine 处理 TTS
- * - highlight/setState/annotation without content → single widget action
- * - 不带内容的 highlight/setState/annotation → 单个组件动作
- */
-export function convertTeacherActionsToActions(teacherActions: TeacherAction[]): Action[] {
-  const actions: Action[] = [];
-
-  for (const ta of teacherActions) {
-    // Always use nanoid for unique action IDs to prevent audio ID collisions
-// 始终使用 nanoid 生成唯一动作 ID 以防止音频 ID 冲突
-    // Ultra Mode generates sequential IDs like "action_1" which are NOT unique across scenes
-// 极速模式生成顺序 ID 如 "action_1"，在跨场景时不唯一
-    const actionId = `action_${nanoid(8)}`;
-    const base = {
-      id: actionId,
-      title: ta.label || '',
-    };
-
-    switch (ta.type) {
-      case 'speech':
-        actions.push({
-          ...base,
-          type: 'speech',
-          text: ta.content || '',
-        } as SpeechAction);
-        break;
-
-      case 'highlight':
-        // Add widget highlight action (visual, quick)
-// 添加组件高亮动作（视觉、快速）
-        actions.push({
-          ...base,
-          type: 'widget_highlight',
-          target: ta.target || '',
-        } as WidgetHighlightAction);
-        // Add speech action for narration (if content exists)
-        // 添加旁白语音动作（如果有内容）
-        if (ta.content) {
-          actions.push({
-            id: `${base.id}_speech`,
-            type: 'speech',
-            text: ta.content,
-            title: base.title,
-          } as SpeechAction);
-        }
-        break;
-
-      case 'setState':
-        // Add widget setState action
-        // 添加组件状态设置动作
-        actions.push({
-          ...base,
-          type: 'widget_setState',
-          state: ta.state || {},
-        } as WidgetSetStateAction);
-        // Add speech action for narration
-        // 添加旁白语音动作
-        if (ta.content) {
-          actions.push({
-            id: `${base.id}_speech`,
-            type: 'speech',
-            text: ta.content,
-            title: base.title,
-          } as SpeechAction);
-        }
-        break;
-
-      case 'annotation':
-        actions.push({
-          ...base,
-          type: 'widget_annotation',
-          target: ta.target || '',
-        } as WidgetAnnotationAction);
-        if (ta.content) {
-          actions.push({
-            id: `${base.id}_speech`,
-            type: 'speech',
-            text: ta.content,
-            title: base.title,
-          } as SpeechAction);
-        }
-        break;
-
-      default:
-        // Fallback to speech for unknown types
-// 未知类型回退为语音动作
-        actions.push({
-          ...base,
-          type: 'speech',
-          text: ta.content || '',
-        } as SpeechAction);
-    }
-  }
-
-  return actions;
-}
-
-/**
  * Process and validate Actions
  * 处理和校验动作
  */
@@ -904,20 +663,4 @@ function processActions(actions: Action[], elements: { id: string }[]): Action[]
 
     return processedAction;
   });
-}
-
-/**
- * Create a complete scene with Actions
- * 创建带动作的完整场景
- */
-export async function createSceneWithActions(
-  outline: SceneOutline,
-  content: GeneratedSlideContent | GeneratedQuizContent,
-  actions: Action[],
-  api: StageStore,
-): Promise<string | null> {
-  const scene = buildCompleteScene(outline, content, actions, api.stageId);
-  if (!scene) return null;
-  const result = await api.scene.create(scene);
-  return result.success ? (result.data ?? null) : null;
 }
