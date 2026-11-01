@@ -26,6 +26,12 @@
 
 # agent skills (local only)
 /.agents
+/.cursor/
+
+# project documentation and agent instructions (local only)
+/docs/
+/AGENTS.md
+/CLAUDE.md
 
 # debug
 npm-debug.log*
