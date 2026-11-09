@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, CircleAlert, Eye, EyeOff, FlaskConical, LoaderCircle, Save, Trash2 } from 'lucide-react';
+import { Check, CircleAlert, Eye, EyeOff, FlaskConical, Info, LoaderCircle, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -87,8 +87,8 @@ function ConnectionForm({ kind }: { kind: ModelKind }) {
     }
   };
 
-  return <FieldSet className="min-w-0 rounded-xl border border-border bg-card/60 p-4" data-testid={`model-${kind}-form`}>
-    <FieldLegend>{labels[kind]}</FieldLegend>
+  return <FieldSet className="model-settings-group min-w-0 rounded-xl border border-border p-4 sm:p-5" data-testid={`model-${kind}-form`}>
+    <FieldLegend className="px-1">{labels[kind]}</FieldLegend>
     <FieldDescription>{kind === 'chat' ? '用于课程生成、课堂问答与简答批改，三名教师共用此配置。'
       : '使用 PDF 资料检索时需要，当前要求 1024 维；无知识库时可不配置。'}</FieldDescription>
     <FieldGroup className="gap-4">
@@ -98,11 +98,11 @@ function ConnectionForm({ kind }: { kind: ModelKind }) {
           <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
           <div className="flex min-w-0 items-center gap-2">
             <Input id={id} type={field.name === 'apiKey' && !shown ? 'password' : 'text'} autoComplete="off"
-              spellCheck={false} autoCapitalize="none" className="min-w-0" placeholder={field.placeholder}
+              spellCheck={false} autoCapitalize="none" className="h-9 min-w-0" placeholder={field.placeholder}
               maxLength={field.name === 'apiKey' ? 8192 : field.name === 'baseUrl' ? 2048 : 256}
               value={draft[field.name]} onChange={event => update(field.name, event.target.value)}
               aria-invalid={!!errors[field.name]} aria-describedby={errors[field.name] ? `${id}-error` : undefined} />
-            {field.name === 'apiKey' && <Button type="button" variant="outline" size="icon" onClick={() => setShown(!shown)}
+            {field.name === 'apiKey' && <Button type="button" variant="outline" size="icon-lg" onClick={() => setShown(!shown)}
               aria-label={`${shown ? '隐藏' : '显示'}${labels[kind]}密钥`} aria-pressed={shown}>
               {shown ? <EyeOff /> : <Eye />}
             </Button>}
@@ -111,8 +111,8 @@ function ConnectionForm({ kind }: { kind: ModelKind }) {
         </Field>;
       })}
     </FieldGroup>
-    <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={save}><Save data-icon="inline-start" />保存{labels[kind]}</Button>
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      <Button type="button" variant="action" onClick={save}><Save data-icon="inline-start" />保存{labels[kind]}</Button>
       <Button type="button" variant="outline" onClick={() => void test()} disabled={testing}>
         {testing ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" /> : <FlaskConical data-icon="inline-start" />}
         {testing ? '测试中…' : `测试${labels[kind]}`}
@@ -146,17 +146,17 @@ export function ModelSettingsDialog() {
     return () => window.removeEventListener('mindflow:open-model-settings', show);
   }, []);
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl" onCloseAutoFocus={event => {
+    <DialogContent className="mindflow-surface model-settings-dialog max-h-[calc(100dvh-2rem)] gap-5 overflow-y-auto rounded-2xl p-4 sm:max-w-4xl sm:p-6" onCloseAutoFocus={event => {
       event.preventDefault();
       if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true });
     }}>
-      <DialogHeader className="pr-8">
+      <DialogHeader className="gap-3 pr-8">
         <DialogTitle>模型设置</DialogTitle>
         <DialogDescription>填写 OpenAI 兼容服务的 API 根地址、密钥与模型名称，两组配置可以使用不同服务商。</DialogDescription>
       </DialogHeader>
-      <Alert><AlertDescription>配置及 API Key 以明文保存在当前浏览器，不会同步到其他设备，可随时清除。测试会发起实际模型请求，可能产生少量用量。</AlertDescription></Alert>
-      {open && <div className="grid min-w-0 gap-4 md:grid-cols-2"><ConnectionForm kind="chat" /><ConnectionForm kind="embedding" /></div>}
-      <DialogFooter><DialogClose asChild><Button type="button" variant="outline">关闭</Button></DialogClose></DialogFooter>
+      <Alert><Info aria-hidden="true" /><AlertDescription>配置及 API Key 以明文保存在当前浏览器，不会同步到其他设备，可随时清除。测试会发起实际模型请求，可能产生少量用量。</AlertDescription></Alert>
+      {open && <div className="grid min-w-0 items-start gap-5 md:grid-cols-2"><ConnectionForm kind="chat" /><ConnectionForm kind="embedding" /></div>}
+      <DialogFooter className="mx-0 mb-0 rounded-none border-0 p-0 pt-1"><DialogClose asChild><Button type="button" variant="outline">关闭</Button></DialogClose></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
