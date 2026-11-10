@@ -9,7 +9,7 @@ export function PlaybackCaption({ playback, subtitle, chatControl }: {
   playback: PlaybackDisplay; subtitle?: string | null; chatControl?: ReactNode;
 }) {
   const { t } = useI18n();
-  return <section aria-label={t('classroom.subtitle')} className="relative flex h-[clamp(8rem,18dvh,11rem)] max-h-[30dvh] shrink-0 flex-col border-t border-border/60 bg-card/40 px-5 py-3 backdrop-blur-xl sm:px-8 sm:py-4">
+  return <section aria-label={t('classroom.subtitle')} className="relative flex h-[clamp(8rem,18dvh,11rem)] max-h-[30dvh] lg:h-[var(--classroom-caption-height)] lg:max-h-none shrink-0 flex-col border-t border-border/60 bg-card/40 px-5 py-3 backdrop-blur-xl sm:px-8 sm:py-4">
     {chatControl && <div className="absolute right-3 top-2 z-10">{chatControl}</div>}
     <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-2 pr-12">

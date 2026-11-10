@@ -14,12 +14,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ClassroomChatPanel } from './classroom-chat';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
+import { useClassroomLayout } from '@/lib/hooks/use-classroom-layout';
+import { ClassroomResizeHandle } from './classroom-resize-handle';
 import type { ClassroomViewProps } from './classroom-view-types';
 
 export function ClassroomView(props: ClassroomViewProps) {
   const { t } = useI18n();
   const chatTrigger = useRef<HTMLButtonElement>(null);
   const shell = useRef<HTMLDivElement>(null);
+  const learningArea = useRef<HTMLElement>(null);
+  const layout = useClassroomLayout(shell, learningArea, !props.sidebarCollapsed && (props.pageState ?? 'ready') === 'ready', !!props.chat?.state.open);
   useEffect(() => {
     if (!props.chat?.state.open) return;
     const node = shell.current;
@@ -33,22 +37,24 @@ export function ClassroomView(props: ClassroomViewProps) {
       window.removeEventListener('resize', resize);
       node?.style.removeProperty('--classroom-viewport-height');
     };
-  }, [props.chat?.state.open]);
+  }, [props.chat?.state.open, shell]);
   const { scene, directory, pageState = 'ready' } = props;
   const notices = props.notices ?? (props.notice ? [props.notice] : []);
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
   const courseEnd = props.allScenesReady && props.playback === 'ended' && index === directory.length - 1 && index >= 0;
-  return <div ref={shell} className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
+  return <div ref={shell} style={layout.style} className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
     <GlobalControls chatOpen={!!props.chat?.state.open} />
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}
       generation={props.generation} onRetryGeneration={props.onRetryGeneration} />}
+    {pageState === 'ready' && !props.sidebarCollapsed && <ClassroomResizeHandle axis="horizontal"
+      control={{ ...layout.sidebar, label: t('classroom.resizeOutline') }} />}
     <main className="flex min-h-0 min-w-0 flex-1 flex-col [@media(max-height:500px)]:overflow-y-auto">
       <div className={cn('flex min-w-0 shrink-0 items-center pr-28', props.chat?.state.open && 'max-lg:pr-3 max-lg:pt-14')}>
         <Header currentSceneTitle={scene?.title ?? ''} />
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-      <section aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
+      <section ref={learningArea} aria-label={t('classroom.learningArea')} tabIndex={props.chat?.state.open ? 0 : undefined}
         className={cn('flex min-h-0 min-w-0 flex-1 flex-col', props.chat?.state.open && 'max-lg:overflow-y-auto max-lg:overscroll-contain')}>
       {pageState !== 'ready' ? <ClassroomStatus state={pageState} generationUrl={props.generationUrl} onRead={props.onRead} /> : <>
         {props.generation && <BackgroundGenerationAnnouncement state={props.generation}
@@ -76,6 +82,7 @@ export function ClassroomView(props: ClassroomViewProps) {
           onNextSegment={props.onNextSegment} onReplay={props.onReplay}
           isPresenting={props.isPresenting} onTogglePresentation={props.onFullscreen} quiz={props.quiz} effects={props.effects} />
         </div>
+        <ClassroomResizeHandle axis="vertical" reverse control={{ ...layout.caption, label: t('classroom.resizeCaption') }} />
         <PlaybackCaption playback={props.playback} subtitle={props.subtitle} chatControl={props.chat && <Tooltip><TooltipTrigger asChild>
           <Button ref={chatTrigger} type="button" variant="ghost" size="icon" aria-label={t(props.chat.state.open ? 'chat.close' : 'chat.open')}
             aria-controls="classroom-chat" aria-expanded={props.chat.state.open} onClick={() => {
@@ -86,6 +93,8 @@ export function ClassroomView(props: ClassroomViewProps) {
       </section>
       </div>
     </main>
+    {pageState === 'ready' && props.chat?.state.open && <ClassroomResizeHandle axis="horizontal" reverse
+      control={{ ...layout.chat, label: t('classroom.resizeChat') }} />}
     {pageState === 'ready' && props.chat && <ClassroomChatPanel chat={props.chat} expanded={props.chat.state.open} directory={directory} currentSceneTitle={scene?.title ?? ''} onClose={() => {
       props.chat!.onClose(); chatTrigger.current?.focus({ preventScroll: true });
     }} />}

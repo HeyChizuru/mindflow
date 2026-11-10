@@ -28,8 +28,8 @@ export function SceneSidebar({ directory, currentSceneId, collapsed, onCollapseC
   };
   return <aside ref={sidebar} aria-label={t('classroom.outline')} aria-hidden={collapsed} inert={collapsed}
     className={cn('absolute inset-y-0 left-0 z-30 flex max-w-[85vw] flex-col overflow-hidden transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:static md:shrink-0',
-      collapsed ? 'w-0' : 'w-64 xl:w-72')}>
-    <div className={cn('flex h-full w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar/90 text-sidebar-foreground shadow-lg backdrop-blur-xl transition-transform duration-300 ease-in-out motion-reduce:transition-none md:shadow-none xl:w-72',
+      collapsed ? 'w-0' : 'w-64 lg:w-[var(--classroom-sidebar-width,16rem)] xl:w-[var(--classroom-sidebar-width,18rem)]')}>
+    <div className={cn('flex h-full w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar/90 text-sidebar-foreground shadow-lg backdrop-blur-xl transition-transform duration-300 ease-in-out motion-reduce:transition-none md:shadow-none lg:w-[var(--classroom-sidebar-width,16rem)] xl:w-[var(--classroom-sidebar-width,18rem)]',
       collapsed ? '-translate-x-full' : 'translate-x-0')}>
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link href="/" aria-label={t('generation.backToHome')}>

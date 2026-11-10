@@ -137,7 +137,7 @@ export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitl
       if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); onClose(); }
     }}
     className={cn('relative z-[60] flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-card shadow-xl transition-[flex-basis,opacity] duration-300 ease-in-out motion-reduce:transition-none',
-      expanded ? 'basis-[min(28rem,70vw)] border-l border-border opacity-100 lg:basis-[min(28rem,36vw)]' : 'pointer-events-none basis-0 border-l-0 opacity-0')}>
+      expanded ? 'basis-[min(28rem,70vw)] border-l border-border opacity-100 lg:basis-[var(--classroom-chat-width)]' : 'pointer-events-none basis-0 border-l-0 opacity-0')}>
     {expanded && <>
     <header className="flex shrink-0 items-center justify-between gap-2 px-4 py-2 lg:py-3">
       <div className="flex min-w-0 items-center gap-2.5">

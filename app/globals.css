@@ -257,3 +257,8 @@
     @apply font-sans;
   }
 }
+
+/* Panel sizes follow the pointer without the expand/collapse transition lag. */
+.classroom-shell[data-resizing] aside {
+  transition: none;
+}

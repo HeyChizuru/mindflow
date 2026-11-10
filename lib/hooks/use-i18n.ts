@@ -2,6 +2,10 @@
 
 /** MVP 中文文案，替代开源 i18n（阶段 A 静态页） */
 const MESSAGES: Record<string, string> = {
+  "classroom.resizeOutline": "调整场景列表宽度",
+  "classroom.resizeChat": "调整课堂讨论宽度",
+  "classroom.resizeCaption": "调整字幕高度",
+  "classroom.resizeHint": "拖动或使用方向键调整，双击或按 Home 恢复默认尺寸",
   "chatSessions.list": "会话列表",
   "chatSessions.history": "历史会话",
   "chatSessions.new": "新会话",
