@@ -7,7 +7,7 @@ import { retrieveChat } from "@/lib/knowledge/retrieve-chat";
 import { readSceneToolSchema, searchPdfToolSchema } from "@/lib/validators/chat";
 import type { ChatSource } from "@/lib/types/chat";
 import { ChatBudget, ChatAgentError, CHAT_LIMITS } from "./budget";
-import { filterCandidates, protectedQuestions, readChatClassroom, type ChatContext } from "./context";
+import { filterRelevantCandidates, protectedQuestions, readChatClassroom, type ChatContext } from "./context";
 
 export function chatTools(hasKnowledgeBase: boolean): ToolSet {
   return {
@@ -27,20 +27,14 @@ export async function executeChatTool(
   let toolSignal: AbortSignal | undefined;
   try {
     const classroom = await readChatClassroom(stageId);
-    // New background scenes may add protected questions after initial context preparation.
-    const currentQuestions = protectedQuestions(classroom);
-    const byId = new Map([...context.protectedQuestions, ...currentQuestions].map((question) => [`${question.sceneId}:${question.id}`, question]));
-    context.protectedQuestions = [...byId.values()];
-    const pending = new Map([...context.pendingGrading, ...classroom.answers.filter((answer) => answer.status !== "completed")
-      .map(({ sceneId, questionId, status }) => ({ sceneId, questionId, status }))]
-      .map((item) => [`${item.sceneId}:${item.questionId}`, item]));
-    context.pendingGrading = [...pending.values()];
+    // Refresh saved facts without changing this turn's routing decision.
+    context.protectedQuestions = protectedQuestions(classroom);
+    context.pendingGrading = classroom.answers.filter((answer) => answer.status !== "completed")
+      .map(({ sceneId, questionId, status }) => ({ sceneId, questionId, status }));
     if (name === "read_scene") {
       const parsed = readSceneToolSchema.safeParse(input);
       if (!parsed.success) throw new ChatAgentError("TOOL_FAILED", "场景读取参数无效", "TOOL_FAILED");
       const teaching = projectTeachingContext({ stageId, sceneId: parsed.data.sceneId }, classroom);
-      const permitted = await filterCandidates([{ id: teaching.scene.id, text: JSON.stringify(teaching.scene) }], context.protectedQuestions, model, budget);
-      if (!permitted.has(teaching.scene.id)) return { status: "restricted", protectedQuestions: context.protectedQuestions };
       if (JSON.stringify(teaching.scene).length > CHAT_LIMITS.toolChars) throw new ChatAgentError("LIMIT_EXCEEDED", "场景内容超过本轮工具长度");
       return { status: "ok", scene: teaching.scene, protectedQuestions: context.protectedQuestions };
     }
@@ -50,13 +44,11 @@ export async function executeChatTool(
     toolSignal = budget.callSignal();
     const found = await retrieveChat(stageId, parsed.data.query, embedding, toolSignal);
     budget.check();
-    const relevant = await filterCandidates(found.map((source) => ({ id: source.chunkId, text: JSON.stringify(source) })), [], model, budget, "relevance", parsed.data.query);
-    const matches = found.filter((source) => relevant.has(source.chunkId));
-    const permitted = await filterCandidates(matches.map((source) => ({ id: source.chunkId, text: JSON.stringify(source) })), context.protectedQuestions, model, budget);
-    const admitted = matches.filter((source) => permitted.has(source.chunkId));
+    const relevant = await filterRelevantCandidates(found.map((source) => ({ id: source.chunkId, text: JSON.stringify(source) })), model, budget, parsed.data.query);
+    const admitted = found.filter((source) => relevant.has(source.chunkId));
     if (JSON.stringify(admitted).length > CHAT_LIMITS.toolChars) throw new ChatAgentError("LIMIT_EXCEEDED", "检索资料超过本轮工具长度，请缩小查询范围");
     admitted.forEach((source) => sources.set(source.chunkId, source));
-    return { status: admitted.length ? "ok" : matches.length ? "restricted" : "no_match", sources: admitted, protectedQuestions: context.protectedQuestions };
+    return { status: admitted.length ? "ok" : "no_match", sources: admitted, protectedQuestions: context.protectedQuestions };
   } catch (error) {
     if (error instanceof ChatAgentError) throw error;
     budget.check();

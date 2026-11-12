@@ -13,6 +13,7 @@ import { ReplyPreview } from './reply-preview';
 const AnswerState = Annotation.Root({
   context: Annotation<ChatContext | null>,
   teacherId: Annotation<ChatTeacherId | null>,
+  needsQuizCheck: Annotation<boolean>,
   messages: Annotation<ModelMessage[]>,
   calls: Annotation<{ toolCallId: string; toolName: string; input: unknown }[]>,
   answer: Annotation<{ reply: string; chunkIds: string[] } | null>,
@@ -42,27 +43,28 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
     .addNode("prepare_context", async () => {
       progress('preparing');
       const context = await prepareChatContext(record, model, budget);
-      return { context, messages: [
+      return { context };
+    })
+    .addNode("route_teacher", async (state) => {
+      if (!state.context) throw new ChatAgentError("CONTEXT_FAILED", "本轮教师上下文未就绪");
+      progress('routing');
+      const route = await budget.structured(model, buildChatPrompt("chat-router"), {
+        question: record.question, context: state.context,
+      }, chatRouteSchema);
+      const context = state.context;
+      const needsQuizCheck = route.needsQuizCheck && context.protectedQuestions.length > 0;
+      return { teacherId: route.teacherId, needsQuizCheck, messages: [
         { role: "user" as const, content: JSON.stringify({ referenceContext: {
           course: context.course, scene: context.scene, protectedQuestions: context.protectedQuestions,
-          pendingGrading: context.pendingGrading,
-          memory: context.memory, restrictedHistory: context.restrictedHistory,
+          pendingGrading: context.pendingGrading, memory: context.memory, needsQuizCheck,
         } }) },
         ...context.history,
         { role: "user" as const, content: record.question },
       ] };
     })
-    .addNode("route_teacher", async (state) => {
-      progress('routing');
-      const route = await budget.structured(model, buildChatPrompt("chat-router"), {
-        question: record.question, context: state.context,
-      }, chatRouteSchema);
-      return { teacherId: route.teacherId };
-    })
     .addNode("teacher", async (state) => {
       if (!state.context || !state.teacherId) throw new ChatAgentError("CONTEXT_FAILED", "本轮教师上下文未就绪");
-      // Tools can add protected questions/pending grades. Re-evaluate before every teacher invocation.
-      const protectedReply = !!(state.context.protectedQuestions.length || state.context.pendingGrading.length);
+      const protectedReply = state.needsQuizCheck;
       progress(protectedReply ? 'reviewing' : 'answering', state.teacherId);
       const previews = new Map<string, ReplyPreview>();
       let preview = '';
@@ -152,7 +154,7 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
       if (state.answer.chunkIds.some((_, i) => !state.answer!.reply.includes(`[${i + 1}]`))) {
         throw new ChatAgentError("REPLY_INVALID", "回复引用未与正文标注对应", "REPLY_INVALID");
       }
-      await checkFinalAnswer(state.answer.reply, state.context, model, budget);
+      if (state.needsQuizCheck) await checkFinalAnswer(state.answer.reply, state.context, model, budget);
       budget.check();
       return {};
     })
@@ -163,7 +165,7 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
     .addEdge("tools", "teacher")
     .addEdge("validate_answer", END)
     .compile();
-  const result = await graph.invoke({ context: null, teacherId: null, messages: [], calls: [], answer: null }, {
+  const result = await graph.invoke({ context: null, teacherId: null, needsQuizCheck: false, messages: [], calls: [], answer: null }, {
     recursionLimit: CHAT_LIMITS.recursion, signal: budget.signal,
   });
   if (!result.answer || !result.teacherId) throw new ChatAgentError("REPLY_INVALID", "本轮问答未完成", "REPLY_INVALID");

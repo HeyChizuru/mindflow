@@ -17,7 +17,7 @@ export const chatRequestSchema = z.union([
   submitChatSchema,
   retryChatSchema.extend({ action: z.literal("retry") }).strict(),
 ]);
-export const chatRouteSchema = z.object({ teacherId: z.enum(CHAT_TEACHER_IDS) }).strict();
+export const chatRouteSchema = z.object({ teacherId: z.enum(CHAT_TEACHER_IDS), needsQuizCheck: z.boolean() }).strict();
 export const readSceneToolSchema = z.object({ sceneId: id }).strict();
 export const searchPdfToolSchema = z.object({ query: z.string().trim().min(1).max(1000) }).strict();
 export const chatAnswerSchema = z.object({

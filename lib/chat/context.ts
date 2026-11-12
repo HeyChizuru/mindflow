@@ -15,7 +15,7 @@ export type ProtectedQuestion = { sceneId: string; id: string; question: string;
 export type Candidate = { id: string; text: string };
 export type ChatContext = {
   course: TeachingContext["course"]; scene: unknown; protectedQuestions: ProtectedQuestion[];
-  history: ModelMessage[]; memory: { text: string; turnIds: string[] }[]; restrictedHistory: boolean;
+  history: ModelMessage[]; memory: { text: string; turnIds: string[] }[];
   pendingGrading: { sceneId: string; questionId: string; status: string }[];
 };
 
@@ -33,18 +33,21 @@ export async function readChatClassroom(stageId: string) {
 }
 
 const admittedSchema = z.object({ allowedIds: z.array(z.string()).max(100) }).strict();
-export async function filterCandidates(
-  candidates: Candidate[], questions: ProtectedQuestion[], model: LanguageModel, budget: ChatBudget,
-  task: "admission" | "relevance" = "admission", query = "",
+function checkCandidateLength(text: string) {
+  if (text.length > CHAT_LIMITS.candidateChars) throw new ChatAgentError("LIMIT_EXCEEDED", "候选资料超过本轮长度限制");
+}
+
+export async function filterRelevantCandidates(
+  candidates: Candidate[], model: LanguageModel, budget: ChatBudget, query: string,
 ): Promise<Set<string>> {
-  if (!candidates.length || (task === "admission" && !questions.length)) return new Set(candidates.map((item) => item.id));
+  if (!candidates.length) return new Set();
   const allowed = new Set<string>();
   let batch: Candidate[] = [];
   let size = 0;
   const flush = async () => {
     if (!batch.length) return;
     const result = await budget.structured(model, buildChatPrompt("chat-context-filter"), {
-      task, query, protectedQuestions: questions, candidates: batch,
+      task: "relevance", query, candidates: batch,
     }, admittedSchema);
     const ids = new Set(batch.map((item) => item.id));
     if (result.allowedIds.some((id) => !ids.has(id)) || new Set(result.allowedIds).size !== result.allowedIds.length) {
@@ -54,7 +57,7 @@ export async function filterCandidates(
     batch = []; size = 0;
   };
   for (const candidate of candidates) {
-    if (candidate.text.length > CHAT_LIMITS.candidateChars) throw new ChatAgentError("LIMIT_EXCEEDED", "候选资料超过本轮安全检查长度");
+    checkCandidateLength(candidate.text);
     if (size + candidate.text.length > CHAT_LIMITS.candidateChars || batch.length === 80) await flush();
     batch.push(candidate); size += candidate.text.length;
   }
@@ -95,23 +98,14 @@ export async function prepareChatContext(record: ChatTurn, model: LanguageModel,
   const teaching = projectTeachingContext({ stageId: record.stageId, sceneId: record.sceneId }, classroom);
   const questions = protectedQuestions(classroom);
   const saved = await readAnswerHistory({ stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId, turnId: record.id });
-  const pool = historyCandidates(saved, record);
-  const candidates = pool.map((turn) => ({ id: turn.id, text: JSON.stringify({ question: turn.question, reply: turn.reply, sceneId: turn.sceneId }) }));
-  const allowed = await filterCandidates(candidates, questions, model, budget);
-  const history = pool.filter((turn) => allowed.has(turn.id));
-  const sceneAllowed = await filterCandidates([
-    { id: teaching.scene.id, text: JSON.stringify(teaching.scene) },
-    { id: "course-metadata", text: JSON.stringify({ name: teaching.course.name,
-      directory: teaching.course.outlines.map(({ id, title }) => ({ id, title })) }) },
-  ], questions, model, budget);
-  const metadataAllowed = sceneAllowed.has("course-metadata");
+  const history = historyCandidates(saved, record);
+  history.forEach((turn) => checkCandidateLength(JSON.stringify({ question: turn.question, reply: turn.reply, sceneId: turn.sceneId })));
+  checkCandidateLength(JSON.stringify(teaching.scene));
+  checkCandidateLength(JSON.stringify({ name: teaching.course.name,
+    directory: teaching.course.outlines.map(({ id, title }) => ({ id, title })) }));
   const context: ChatContext = {
-    course: { ...teaching.course, name: metadataAllowed ? teaching.course.name : "当前课堂",
-      outlines: teaching.course.outlines.map((outline) => questions.length
-        ? { ...outline, title: metadataAllowed ? outline.title : `场景 ${outline.order}`, description: "", keyPoints: [] } : outline) },
-    scene: sceneAllowed.has(teaching.scene.id) ? teaching.scene
-      : { id: teaching.scene.id, type: teaching.scene.type, status: "restricted" },
-    protectedQuestions: questions, history: [], memory: [], restrictedHistory: history.length !== pool.length,
+    course: teaching.course, scene: teaching.scene,
+    protectedQuestions: questions, history: [], memory: [],
     pendingGrading: classroom.answers.filter((answer) => answer.status !== "completed")
       .map(({ sceneId, questionId, status }) => ({ sceneId, questionId, status })),
   };
@@ -153,8 +147,6 @@ export async function prepareChatContext(record: ChatTurn, model: LanguageModel,
       if (summary.items.some((item) => item.turnIds.some((id) => !selectedIds.has(id)))) {
         throw new ChatAgentError("REPLY_INVALID", "会话摘要包含无效来源", "REPLY_INVALID");
       }
-      const permitted = await filterCandidates(summary.items.map((item, i) => ({ id: String(i), text: item.text })), questions, model, budget);
-      if (permitted.size !== summary.items.length) throw new ChatAgentError("CONTEXT_FAILED", "会话摘要未通过测验访问检查");
       context.memory = summary.items;
     }
   }
@@ -162,7 +154,7 @@ export async function prepareChatContext(record: ChatTurn, model: LanguageModel,
 }
 
 export async function checkFinalAnswer(reply: string, context: ChatContext, model: LanguageModel, budget: ChatBudget) {
-  if (!context.protectedQuestions.length && !context.pendingGrading.length) return;
+  if (!context.protectedQuestions.length) return;
   const result = await budget.structured(model, buildChatPrompt("chat-context-filter"), {
     task: "final_check", protectedQuestions: context.protectedQuestions, pendingGrading: context.pendingGrading, draft: reply,
   }, z.object({ safe: z.boolean() }).strict());
