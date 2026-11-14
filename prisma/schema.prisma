@@ -169,6 +169,7 @@ model QuizSubmission {
   @@map("quiz_submissions")
 }
 
+// 会话固定关联课堂；同一课堂可有多个独立聊天会话。
 model ChatSession {
   id String @id @default(uuid()) @db.Uuid
   stageId String @map("stage_id") @db.Uuid
@@ -186,11 +187,13 @@ model ChatSession {
 }
 
 /// 一轮问题及至多一份完整回复；状态与执行一致性由增量迁移中的 CHECK 约束保证
+// 每轮保存问题、执行状态及最终回复；请求身份用于会话内去重。
 model ChatTurn {
   id String @id @default(uuid()) @db.Uuid
   stageId String @map("stage_id") @db.Uuid
   sessionId String @map("session_id") @db.Uuid
   sceneId String @map("scene_id") @db.Uuid
+  /// 用户提问的请求身份；同一会话内用于识别重复提交。
   requestId String @map("request_id") @db.Uuid
   question String
   status String @default("pending")
@@ -198,6 +201,7 @@ model ChatTurn {
   teacherId String? @map("teacher_id")
   sources Json?
   failureCode String? @map("failure_code")
+  /// 每次模型执行独立领取身份与期限；重试时可更换，旧执行不得写回。
   executionId String? @map("execution_id") @db.Uuid
   executionStartedAt DateTime? @map("execution_started_at") @db.Timestamptz(3)
   executionExpiresAt DateTime? @map("execution_expires_at") @db.Timestamptz(3)

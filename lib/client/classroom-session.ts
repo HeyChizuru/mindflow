@@ -82,6 +82,7 @@ export class ClassroomSession {
     this.patch({ questions: { ...this.state.questions, [key]: { ...this.display(sceneId, questionId), ...patch } } });
   }
   private touch(key: string) { this.writes.set(key, ++this.revision); }
+  // 合并最新服务端快照时，保留读取开始后发生的本地写入和当前播放场景。
   private mergeReady(data: ReadyClassroom, readRevision: number) {
     const previous = this.state.classroom;
     const scenes = data.scenes.map((scene) => {
@@ -91,6 +92,7 @@ export class ClassroomSession {
     const questions = { ...this.state.questions };
     for (const record of data.answers) {
       const key = this.key(record.sceneId, record.questionId);
+      // 旧读请求不能覆盖发起读取后已经更新的题目状态。
       if ((this.writes.get(key) ?? 0) > readRevision) continue;
       const current = questions[key] ?? {};
       const stored = current.record;
@@ -105,7 +107,9 @@ export class ClassroomSession {
         ? { record, submitting: false }
         : { ...current, record, ...(changed && dirty ? { issue: 'conflict' as const } : {}) };
     }
-    const sceneId = previous && scenes.some((scene) => scene.id === this.state.sceneId) ? this.state.sceneId : data.playback.sceneId;
+    const sceneId = previous && scenes.some((scene) => scene.id === this.state.sceneId)
+      ? this.state.sceneId
+      : data.playback.sceneId;
     this.patch({ page: 'ready', classroom: { ...data, scenes }, sceneId, questions,
       ...(this.state.notice?.kind === 'read_failed' ? { notice: null } : {}),
       ...((!previous && data.playback.fallbackReason || previous && sceneId !== this.state.sceneId) ? { notice: { title: '已回到首场', message: '上次保存的位置已不可用，从首场开头观看。' } } : {}) });

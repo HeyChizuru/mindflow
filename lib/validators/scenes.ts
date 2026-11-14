@@ -164,6 +164,7 @@ const sceneBaseSchema = z.object({
   actions: actionsSchema,
 });
 
+// 结构字段之外，还要检查动作引用的目标属于当前场景。
 function validateScene(scene: z.infer<typeof sceneBaseSchema>, context: z.RefinementCtx) {
   if (scene.type !== scene.content.type) {
     context.addIssue({ code: "custom", path: ["content"], message: "场景与内容类型不一致" });

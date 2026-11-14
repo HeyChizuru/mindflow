@@ -13,6 +13,7 @@ export function useChatTypewriter(text: string, identity: string | undefined, co
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const boundaries = [...segmenter.segment(text)].map((part) => part.index + part.segment.length);
     // Hold the trailing grapheme while streaming: the next chunk may complete an emoji/surrogate pair.
+    // 未完成时暂留末尾字素，避免后续分片补全 emoji 时出现半个字符。
     const limit = completed ? boundaries.length : Math.max(0, boundaries.length - 1);
     const previous = progress.current;
     const offset = previous.identity === identity && text.startsWith(previous.text) ? previous.text.length : 0;
@@ -20,7 +21,10 @@ export function useChatTypewriter(text: string, identity: string | undefined, co
     if (cursor < 0) cursor = boundaries.length;
     let animation = 0, last = 0;
     const tick = (now: number) => {
-      if (last && now - last < 16 && !media.matches) { animation = requestAnimationFrame(tick); return; }
+      if (last && now - last < 16 && !media.matches) {
+        animation = requestAnimationFrame(tick);
+        return;
+      }
       const elapsed = Math.min(50, last ? now - last : 16);
       last = now;
       const speed = Math.max(60, Math.min(720, (limit - cursor) / 2));
@@ -31,10 +35,16 @@ export function useChatTypewriter(text: string, identity: string | undefined, co
       setFrame((current) => current.identity === identity && current.text === visible ? current : { identity, text: visible });
       if (cursor < limit) animation = requestAnimationFrame(tick);
     };
-    const motionChanged = () => { cancelAnimationFrame(animation); animation = requestAnimationFrame(tick); };
+    const motionChanged = () => {
+      cancelAnimationFrame(animation);
+      animation = requestAnimationFrame(tick);
+    };
     animation = requestAnimationFrame(tick);
     media.addEventListener('change', motionChanged);
-    return () => { cancelAnimationFrame(animation); media.removeEventListener('change', motionChanged); };
+    return () => {
+      cancelAnimationFrame(animation);
+      media.removeEventListener('change', motionChanged);
+    };
   }, [text, identity, completed]);
   const visible = !identity ? text : frame.identity === identity && text.startsWith(frame.text) ? frame.text : '';
   return { text: visible, typing: visible !== text };

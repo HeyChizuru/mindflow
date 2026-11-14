@@ -3,6 +3,7 @@ export const CHAT_TEACHERS = {
   reasoning_coach: "思考教练",
   application_coach: "应用教练",
 } as const;
+// 教师身份是固定集合；每次问答只选择其中一名。
 export const CHAT_TEACHER_IDS = ["explainer", "reasoning_coach", "application_coach"] as const;
 export const CHAT_FAILURE_CODES = ["EXECUTION_FAILED", "MODEL_FAILED", "TOOL_FAILED", "REPLY_INVALID"] as const;
 /** Independent of quiz execution and any HTTP runtime limit. */

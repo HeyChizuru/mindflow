@@ -2,14 +2,27 @@ import "server-only";
 import type { EmbeddingModel, LanguageModel } from "ai";
 import { LlmSettingsError } from "@/lib/ai/llm-connection";
 import { ClassroomError } from "@/lib/services/classroom";
-import { ChatError, claimChatExecution, completeChatExecution, failChatExecution, getChatHistory, retryChatExecution, submitChatQuestion } from "@/lib/services/chat";
+import {
+  ChatError,
+  claimChatExecution,
+  completeChatExecution,
+  failChatExecution,
+  getChatHistory,
+  retryChatExecution,
+  submitChatQuestion,
+} from "@/lib/services/chat";
 import type { ChatSaveResult, ChatTurn } from "@/lib/types/chat";
 import { chatStreamIdentity, type ChatObserver } from '@/lib/types/chat-stream';
 import { chatRequestSchema } from "@/lib/validators/chat";
 import { ChatAgentError, ChatBudget } from "./budget";
 import { runChatGraph } from "./graph";
 
-type Dependencies = { resolveModel: () => Promise<LanguageModel>; resolveEmbedding: () => Promise<EmbeddingModel>; signal: AbortSignal; observe?: ChatObserver };
+type Dependencies = {
+  resolveModel: () => Promise<LanguageModel>;
+  resolveEmbedding: () => Promise<EmbeddingModel>;
+  signal: AbortSignal;
+  observe?: ChatObserver;
+};
 const response = (record: ChatTurn): ChatSaveResult => ({ success: true, questionSaved: true, record });
 const details = (record: ChatTurn) => ({ questionSaved: true as const, turnId: record.id, record });
 
@@ -22,11 +35,13 @@ async function recordFailure(record: ChatTurn, error: unknown): Promise<never> {
   throw new ChatError(safe.code, safe.message, details(saved));
 }
 
+// 编排问题保存、执行领取、教师问答和结果写回；模型等待不持有数据库事务。
 export async function answerChat(input: unknown, dependencies: Dependencies): Promise<ChatSaveResult> {
   const parsed = chatRequestSchema.safeParse(input);
   if (!parsed.success) throw new ChatError("INVALID_REQUEST", "聊天请求字段或身份无效");
   const request = parsed.data;
   const retry = "action" in request;
+  // 先保存问题或恢复原记录；重试不会创建一条新的用户消息。
   let record: ChatTurn;
   if (retry) {
     const history = await getChatHistory({ stageId: request.stageId, sessionId: request.sessionId, turnId: request.turnId });
@@ -43,16 +58,20 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
     throw new ChatError("EXECUTION_CONFLICT", "执行状态已变化，请恢复最新记录", details(record));
   }
   let model: LanguageModel;
-  try { model = await dependencies.resolveModel(); }
-  catch (error) {
+  try {
+    model = await dependencies.resolveModel();
+  } catch (error) {
     throw new ChatError(error instanceof LlmSettingsError ? "MODEL_CONFIG_MISSING" : "MODEL_FAILED",
       "本次对话模型配置缺失、无效或不可用，请检查设置后重试", details(record));
   }
   if (dependencies.signal.aborted) throw new ChatError("CANCELLED", "本轮已取消，问题仍保留", details(record));
   const startedBeforeClaim = Date.now();
   const key = { stageId: record.stageId, sessionId: record.sessionId, sceneId: record.sceneId, turnId: record.id };
+  // 仅成功领取执行权的请求可以调用模型；有效执行或已完成结果直接恢复。
   try {
-    const claim = retry ? await retryChatExecution({ ...key, expectedExecutionId: request.expectedExecutionId }) : await claimChatExecution(key);
+    const claim = retry
+      ? await retryChatExecution({ ...key, expectedExecutionId: request.expectedExecutionId })
+      : await claimChatExecution(key);
     record = claim.record;
     if (!claim.ownsExecution) return response(record);
   } catch (error) {
@@ -62,24 +81,37 @@ export async function answerChat(input: unknown, dependencies: Dependencies): Pr
   dependencies.observe?.({ type: 'start', record });
   const budget = new ChatBudget(record.executionExpiresAt!, dependencies.signal, startedBeforeClaim);
   let result: Awaited<ReturnType<typeof runChatGraph>>;
-  try { result = await runChatGraph(record, { model, budget, resolveEmbedding: dependencies.resolveEmbedding, observe: dependencies.observe }); }
-  catch (error) {
+  // 领取事务结束后才调用模型，避免模型等待期间持有数据库锁。
+  try {
+    result = await runChatGraph(record, {
+      model,
+      budget,
+      resolveEmbedding: dependencies.resolveEmbedding,
+      observe: dependencies.observe,
+    });
+  } catch (error) {
     return recordFailure(record, dependencies.signal.aborted
       ? new ChatAgentError("CANCELLED", "本轮已取消，可读取记录后显式重试") : error);
   }
   try {
     const identity = chatStreamIdentity(record);
+    // answer 是临时展示内容；只有后续完成写回才能确认回复已保存。
     dependencies.observe?.({ type: 'answer', identity, reply: result.reply, teacherId: result.teacherId });
     dependencies.observe?.({ type: 'progress', identity, phase: 'saving', teacherId: result.teacherId });
-    const saved = await completeChatExecution({ ...key, executionId: record.executionId,
-      teacherId: result.teacherId, reply: result.reply, chunkIds: result.chunkIds }, result.sources);
+    const saved = await completeChatExecution({
+      ...key,
+      executionId: record.executionId,
+      teacherId: result.teacherId,
+      reply: result.reply,
+      chunkIds: result.chunkIds,
+    }, result.sources);
     return response(saved);
   } catch (error) {
     if (error instanceof ChatError && error.code === "SESSION_UNAVAILABLE") throw error;
     if (error instanceof ChatError && error.code === "INVALID_SOURCE") {
       return recordFailure(record, new ChatAgentError("REPLY_INVALID", error.message, "REPLY_INVALID"));
     }
-    // An ambiguous completion must never be followed by another model run or a failure write.
+    // 提交可能已成功但回执丢失；先读回核对，不能立即重跑模型或写入失败状态。
     try {
       const latest = (await getChatHistory({ stageId: record.stageId, sessionId: record.sessionId, turnId: record.id })).records[0];
       if (latest?.status === "completed") return response(latest);

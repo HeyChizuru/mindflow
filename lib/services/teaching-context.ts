@@ -44,6 +44,7 @@ function projectSubmission(record: QuizSubmission): TeachingSubmission {
 }
 
 /** Pure, validated projection shared by current-scene and other-scene reads. */
+// 投影教师可读取的课程数据，不直接暴露题库隐藏答案和评分依据。
 export function projectTeachingContext(input: unknown, classroom: ReadyClassroom): TeachingContext {
   const parsed = teachingContextTargetSchema.safeParse(input);
   if (!parsed.success) throw new ClassroomError("INVALID_REQUEST", "课程上下文读取目标无效");

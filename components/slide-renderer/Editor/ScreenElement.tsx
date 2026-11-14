@@ -10,6 +10,7 @@ import { BaseLineElement } from '../components/element/LineElement/BaseLineEleme
 import { BaseChartElement } from '../components/element/ChartElement/BaseChartElement';
 import { BaseLatexElement } from '../components/element/LatexElement/BaseLatexElement';
 
+// 单个元素渲染失败时只替换该元素，其他画布内容仍可展示。
 class ElementBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -31,6 +32,7 @@ export function ScreenElement({ elementInfo, elementIndex, animate }: { elementI
     style={{ left: elementInfo.left, top: elementInfo.top, width: elementInfo.width, height: elementInfo.height, transform: 'rotate(' + (elementInfo.rotate ?? 0) + 'deg)' }}>{message}</div>;
   function renderElement(): ReactNode {
     const rotate = elementInfo.rotate ?? 0;
+    // 按结构化元素类型选择对应的只读渲染组件。
     switch (elementInfo.type) {
       case 'text': return <BaseTextElement elementInfo={{ ...elementInfo, rotate }} />;
       case 'shape': {

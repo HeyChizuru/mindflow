@@ -1,5 +1,6 @@
 import type { Action, JsonObject } from "@/lib/types/action";
 
+// 所有元素共享画布坐标；渲染器再根据类型读取各自的展示数据。
 type ElementBase = {
   id: string;
   left: number;
@@ -39,6 +40,7 @@ export type SlideTheme = {
   shadow?: { h: number; v: number; blur: number; color: string };
 };
 
+// 画布使用固定逻辑尺寸，页面展示时再按容器比例缩放。
 export type SlideCanvas = {
   id: string;
   viewportSize: number;

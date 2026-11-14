@@ -16,7 +16,16 @@ export function useViewportSize(canvasRef: RefObject<HTMLElement | null>, viewpo
   return useMemo(() => {
     const width = viewport.viewportSize;
     const height = width * viewport.viewportRatio;
+    // 按宽高中更受限的一侧等比缩放，并留出少量边距。
     const scale = Math.max(0, Math.min(bounds.width / width, bounds.height / height) * 0.94);
-    return { scale, viewportStyles: { width, height, left: (bounds.width - width * scale) / 2, top: (bounds.height - height * scale) / 2 } };
+    return {
+      scale,
+      viewportStyles: {
+        width,
+        height,
+        left: (bounds.width - width * scale) / 2,
+        top: (bounds.height - height * scale) / 2
+      }
+    };
   }, [bounds, viewport.viewportSize, viewport.viewportRatio]);
 }

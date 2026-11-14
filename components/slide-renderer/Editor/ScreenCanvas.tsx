@@ -15,6 +15,7 @@ import type { TeachingEffect } from '@/components/stage/classroom-view-types';
 import type { PercentageGeometry } from '@/lib/types/action';
 
 type SlideContent = Extract<SceneContent, { type: 'slide' }>;
+// 计算旋转后的外接框，再转为百分比，让效果层随画布缩放。
 function geometry(element: SlideElement | undefined, width: number, height: number): PercentageGeometry | null {
   if (!element) return null;
   const angle = (element.rotate ?? 0) * Math.PI / 180;
@@ -22,7 +23,14 @@ function geometry(element: SlideElement | undefined, width: number, height: numb
   const h = Math.abs(element.width * Math.sin(angle)) + Math.abs(element.height * Math.cos(angle));
   const centerX = (element.left + element.width / 2) / width * 100;
   const centerY = (element.top + element.height / 2) / height * 100;
-  return { x: centerX - w / width * 50, y: centerY - h / height * 50, w: w / width * 100, h: h / height * 100, centerX, centerY };
+  return {
+    x: centerX - w / width * 50,
+    y: centerY - h / height * 50,
+    w: w / width * 100,
+    h: h / height * 100,
+    centerX,
+    centerY
+  };
 }
 export function ScreenCanvas({ effects }: { effects?: TeachingEffect[] }) {
   const canvas = useSceneSelector<SlideContent, SlideContent['canvas']>((content) => content.canvas);
@@ -30,9 +38,15 @@ export function ScreenCanvas({ effects }: { effects?: TeachingEffect[] }) {
   const { scale, viewportStyles } = useViewportSize(canvasRef, canvas);
   const { backgroundStyle } = useSlideBackgroundStyle(canvas.background);
   const store = useCanvasStore();
-  const spotlight = effects === undefined ? store.spotlightElementId : effects.find((effect) => effect.type === 'spotlight')?.elementId;
-  const laser = effects === undefined ? store.laserElementId : effects.find((effect) => effect.type === 'laser')?.elementId;
-  const highlights = effects === undefined ? store.highlightedElementIds : effects.filter((effect) => effect.type === 'widget_highlight').map((effect) => effect.target);
+  const spotlight = effects === undefined
+    ? store.spotlightElementId
+    : effects.find((effect) => effect.type === 'spotlight')?.elementId;
+  const laser = effects === undefined
+    ? store.laserElementId
+    : effects.find((effect) => effect.type === 'laser')?.elementId;
+  const highlights = effects === undefined
+    ? store.highlightedElementIds
+    : effects.filter((effect) => effect.type === 'widget_highlight').map((effect) => effect.target);
   const annotations = (effects ?? []).filter((effect) => effect.type === 'widget_annotation');
   const unlocated = (effects ?? []).filter((effect) => 'target' in effect ? !canvas.elements.some((item) => item.id === effect.target) : 'elementId' in effect ? !canvas.elements.some((item) => item.id === effect.elementId) : false);
   const w = canvas.viewportSize, h = w * canvas.viewportRatio;

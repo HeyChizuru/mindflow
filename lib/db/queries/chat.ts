@@ -1,14 +1,25 @@
 import { prisma } from "@/lib/db/client";
 import { Prisma, type PrismaClient } from "@/lib/generated/prisma/client";
-import { CHAT_EXECUTION_TTL_MS, type ChatTurn, type ChatTurnKey, type ChatExecutionKey,
-  type SubmitChat, type ChatSource, type CompleteChat, type FailChat } from "@/lib/types/chat";
+import {
+  CHAT_EXECUTION_TTL_MS,
+  type ChatTurn,
+  type ChatTurnKey,
+  type ChatExecutionKey,
+  type SubmitChat,
+  type ChatSource,
+  type CompleteChat,
+  type FailChat,
+} from "@/lib/types/chat";
 import { chatTurnSchema } from "@/lib/validators/chat";
 
 type ChatDatabase = Pick<PrismaClient, "$queryRaw">;
 type DateField = "executionStartedAt" | "executionExpiresAt" | "completedAt" | "createdAt" | "updatedAt";
 type ChatRow = Omit<ChatTurn, DateField> & {
-  executionStartedAt: Date | null; executionExpiresAt: Date | null; completedAt: Date | null;
-  createdAt: Date; updatedAt: Date;
+  executionStartedAt: Date | null;
+  executionExpiresAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 const columns = Prisma.sql`
   c.id, c.stage_id AS "stageId", c.session_id AS "sessionId", c.scene_id AS "sceneId", c.request_id AS "requestId", c.question,
@@ -19,11 +30,18 @@ const columns = Prisma.sql`
   c.created_at AS "createdAt", c.updated_at AS "updatedAt"
 `;
 function toTurn(row: ChatRow): ChatTurn {
-  return chatTurnSchema.parse({ ...row, executionStartedAt: row.executionStartedAt?.toISOString() ?? null,
-    executionExpiresAt: row.executionExpiresAt?.toISOString() ?? null, completedAt: row.completedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
+  return chatTurnSchema.parse({
+    ...row,
+    executionStartedAt: row.executionStartedAt?.toISOString() ?? null,
+    executionExpiresAt: row.executionExpiresAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
 }
-function first(rows: ChatRow[]) { return rows.length ? toTurn(rows[0]) : null; }
+function first(rows: ChatRow[]) {
+  return rows.length ? toTurn(rows[0]) : null;
+}
 function turnWhere(key: ChatTurnKey) {
   return Prisma.sql`c.id = ${key.turnId}::uuid AND c.session_id = ${key.sessionId}::uuid
     AND c.stage_id = ${key.stageId}::uuid AND c.scene_id = ${key.sceneId}::uuid`;
@@ -44,6 +62,7 @@ export async function readChatTurns(stageId: string, sessionId: string, filter: 
 }
 
 /** A single statement fixes both visibility and the current question's stable cutoff. */
+// 只读取当前会话中在本轮开始前已完成的问答，避免未来回复混入上下文。
 export async function readAnswerHistory(key: ChatTurnKey, db: ChatDatabase = prisma) {
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
     SELECT ${columns} FROM chat_turns AS c
@@ -60,6 +79,7 @@ export async function readAnswerHistory(key: ChatTurnKey, db: ChatDatabase = pri
 
 /** Call inside a short transaction. Read the expiry flag only after acquiring the lock. */
 export async function lockChatTurn(key: ChatTurnKey, db: ChatDatabase) {
+  // 领取与写回都先锁定同一轮记录，串行检查竞争中的状态变化。
   await db.$queryRaw(Prisma.sql`SELECT c.id FROM chat_turns AS c WHERE ${turnWhere(key)} FOR UPDATE`);
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`SELECT ${columns} FROM chat_turns AS c WHERE ${turnWhere(key)}`);
   return first(rows);
@@ -75,7 +95,8 @@ export async function insertChatTurn(input: SubmitChat & { turnId: string }, db:
   return first(rows);
 }
 
-/** Service has locked/checked the observed record. SQL still enforces state, identity and DB expiry. */
+/** 服务层已锁定并检查记录；SQL 再约束状态、执行身份和数据库时间。 */
+// 数据库条件同时检查旧执行身份与状态，确保只有符合条件的请求能领取。
 export async function claimChatTurn(key: ChatExecutionKey, expectedExecutionId: string | null, db: ChatDatabase) {
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
     WITH timing AS MATERIALIZED (SELECT date_trunc('milliseconds', clock_timestamp()) AS started_at)
@@ -92,7 +113,8 @@ export async function claimChatTurn(key: ChatExecutionKey, expectedExecutionId: 
   return first(rows);
 }
 
-/** Caller holds the row lock; checked_at is measured after that lock, including time spent checking sources. */
+/** 已持有行锁；写回时重新读取数据库时间，避免来源校验期间执行过期仍被保存。 */
+// 用数据库时间与执行身份约束完成写入，过期结果不能覆盖当前状态。
 export async function completeChatTurn(input: CompleteChat, sources: ChatSource[], db: ChatDatabase) {
   const rows = await db.$queryRaw<ChatRow[]>(Prisma.sql`
     WITH timing AS MATERIALIZED (SELECT date_trunc('milliseconds', clock_timestamp()) AS checked_at)

@@ -1,5 +1,11 @@
 import type { ChatErrorResponse, ChatRequest, ChatTurn, ReadChat } from '@/lib/types/chat';
-import { chatErrorResponseSchema, chatReadResultSchema, chatRequestSchema, chatSaveResultSchema, readChatSchema } from '@/lib/validators/chat';
+import {
+  chatErrorResponseSchema,
+  chatReadResultSchema,
+  chatRequestSchema,
+  chatSaveResultSchema,
+  readChatSchema,
+} from '@/lib/validators/chat';
 import { chatStreamEventSchema } from '@/lib/validators/chat-stream';
 import { chatStreamIdentity, type ChatObserver, type ChatStreamIdentity } from '@/lib/types/chat-stream';
 
@@ -21,8 +27,11 @@ function belongs(record: ChatTurn, input: ChatRequest | ReadChat) {
 
 async function body(response: Response, input: ChatRequest | ReadChat): Promise<unknown> {
   let value: unknown;
-  try { value = await response.json(); }
-  catch { throw new ChatRequestError(); }
+  try {
+    value = await response.json();
+  } catch {
+    throw new ChatRequestError();
+  }
   if (!response.ok) {
     const parsed = chatErrorResponseSchema.safeParse(value);
     if (!parsed.success) throw new ChatRequestError();
@@ -48,10 +57,12 @@ export async function readChat(input: ReadChat, signal?: AbortSignal): Promise<C
   return parsed.data.records;
 }
 
+// 增量解析 SSE，并核对事件顺序与执行身份；流断开不等于保存成功。
 async function readStream(response: Response, input: ChatRequest, observe: ChatObserver): Promise<ChatTurn> {
   const reader = response.body?.getReader();
   if (!reader) throw new ChatRequestError();
   const decoder = new TextDecoder('utf-8', { fatal: true });
+  // 字节流、SSE 帧和消息增量的边界不一定一致，先缓存完整帧再解析。
   let buffer = '', sequence = 0;
   let identity: ChatStreamIdentity | undefined;
   let answered = false;
@@ -60,7 +71,8 @@ async function readStream(response: Response, input: ChatRequest, observe: ChatO
   try {
     while (true) {
       const { value, done } = await reader.read();
-      if (done) throw new ChatRequestError(); // EOF is never proof of completion.
+      // 连接结束可能是断流，不能据此推断服务端已保存结果。
+      if (done) throw new ChatRequestError();
       buffer += decoder.decode(value, { stream: true });
       let separator = /\r?\n\r?\n/.exec(buffer);
       while (separator) {
@@ -71,7 +83,12 @@ async function readStream(response: Response, input: ChatRequest, observe: ChatO
           .map((line) => line.slice(5).trimStart());
         if (lines.length) {
           let raw: unknown;
-          try { raw = JSON.parse(lines.join('\n')); } catch { throw new ChatRequestError(); }
+          try {
+            raw = JSON.parse(lines.join('\n'));
+          } catch {
+            throw new ChatRequestError();
+          }
+          // 事件必须按服务端序号到达，并归属于当前请求及执行。
           const parsed = chatStreamEventSchema.safeParse(raw);
           if (!parsed.success || parsed.data.sequence !== sequence++) throw new ChatRequestError();
           const event = parsed.data;
@@ -81,6 +98,7 @@ async function readStream(response: Response, input: ChatRequest, observe: ChatO
           }
           if ('record' in event) {
             if (!belongs(event.record, input)) throw new ChatRequestError();
+            // done 返回服务端记录，调用方仍须根据记录状态区分处理中与已完成。
             if (event.type === 'done') {
               if (identity && !matches(chatStreamIdentity(event.record))) throw new ChatRequestError();
               return event.record;

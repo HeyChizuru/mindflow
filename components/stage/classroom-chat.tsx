@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, FileText, Lightbulb, MapPin, MessageCircle, Plus, RefreshCw, RotateCcw, Wrench, X, LoaderCircle } from 'lucide-react';
+import {
+  ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, FileText, Lightbulb, MapPin,
+  MessageCircle, Plus, RefreshCw, RotateCcw, Wrench, X, LoaderCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +13,14 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Message, MessageContent, MessageFooter, MessageHeader } from '@/components/ui/message';
-import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/components/ui/message-scroller';
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -37,22 +47,33 @@ function itemStatus(item: ClassroomChatItem) {
   return 'chat.' + (item.record?.status ?? 'unknown');
 }
 
+// 单轮展示同时处理临时预览、已保存回复和显式恢复入口。
 function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
-  item: ClassroomChatItem; sceneTitle: string; onRead: () => void; onRecover: () => void;
+  item: ClassroomChatItem;
+  sceneTitle: string;
+  onRead: () => void;
+  onRecover: () => void;
 }) {
   const { t } = useI18n();
   const { record } = item;
   const completed = record?.status === 'completed';
   const teacherId = record?.teacherId ?? item.preview?.teacherId;
   const TeacherIcon = teacherId ? teacherIcons[teacherId] : MessageCircle;
-  const revealed = useChatTypewriter(completed ? record.reply! : item.preview?.text ?? '',
-    item.preview?.executionId, completed || !item.preview?.active);
+  const revealed = useChatTypewriter(
+    completed ? record.reply! : item.preview?.text ?? '',
+    item.preview?.executionId,
+    completed || !item.preview?.active,
+  );
   const recoverable = !completed && item.issue !== 'conflict' && (item.issue === 'unsaved' || item.canResubmit
     || !item.issue && (record?.status === 'pending' || record?.status === 'failed' || record?.executionExpired));
   const error = !completed && (item.code ? t('chat.error.' + item.code)
     : record?.status === 'failed' ? t('chat.failure.' + record.failureCode) : null);
-  return <div className="flex min-w-0 flex-col gap-5" data-testid="chat-turn"
-    data-request-id={item.submission.requestId} data-status={record?.status ?? item.issue ?? 'waiting'}>
+  return <div
+    className="flex min-w-0 flex-col gap-5"
+    data-testid="chat-turn"
+    data-request-id={item.submission.requestId}
+    data-status={record?.status ?? item.issue ?? 'waiting'}
+  >
     <Message align="end" role="article" aria-label={t('chat.user')}>
       <MessageContent>
         <MessageHeader className="justify-end gap-2"><span>{t('chat.user')}</span>
@@ -63,14 +84,20 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
         </Bubble>
       </MessageContent>
     </Message>
-    {(completed || teacherId) && <Message role="article" aria-label={CHAT_TEACHERS[teacherId!]} aria-busy={!completed || revealed.typing}>
+    {(completed || teacherId) && <Message
+      role="article"
+      aria-label={CHAT_TEACHERS[teacherId!]}
+      aria-busy={!completed || revealed.typing}
+    >
       <MessageContent>
         <MessageHeader className="gap-2"><TeacherIcon aria-hidden="true" className="size-4 text-primary" />
           <span className="text-foreground">{CHAT_TEACHERS[teacherId!]}</span>
           <span className="text-xs font-normal">{t('chat.teacher.' + teacherId)}</span>
         </MessageHeader>
         <Bubble variant="ghost" className="w-full"><BubbleContent className="w-full">
-          <ChatMarkdown streaming={(!!item.preview?.active && item.preview.phase === 'answering') || revealed.typing}>{revealed.text}</ChatMarkdown>
+          <ChatMarkdown
+            streaming={(!!item.preview?.active && item.preview.phase === 'answering') || revealed.typing}
+          >{revealed.text}</ChatMarkdown>
         </BubbleContent></Bubble>
         {completed && !!record.sources?.length && <details className="group/sources min-w-0 rounded-lg border border-border bg-card/60">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -99,10 +126,22 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
         </p>}
       <div className="flex flex-wrap gap-2">
         {error && <ModelSettingsButton />}
-        <Button type="button" variant={item.issue === 'unknown' ? 'outline' : 'ghost'} size="sm" onClick={onRead} disabled={item.checking}>
+        <Button
+          type="button"
+          variant={item.issue === 'unknown' ? 'outline' : 'ghost'}
+          size="sm"
+          onClick={onRead}
+          disabled={item.checking}
+        >
           <RefreshCw data-icon="inline-start" />{t('chat.readTurn')}
         </Button>
-        {recoverable && <Button type="button" variant="outline" size="sm" onClick={onRecover} disabled={item.busy || item.checking}>
+        {recoverable && <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRecover}
+          disabled={item.busy || item.checking}
+        >
           <RotateCcw data-icon="inline-start" />{t(item.canResubmit || item.issue === 'unsaved' ? 'chat.resubmit'
             : record?.status === 'pending' ? 'chat.continue' : 'chat.retry')}
         </Button>}
@@ -112,7 +151,11 @@ function ChatTurnView({ item, sceneTitle, onRead, onRecover }: {
 }
 
 export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitle, onClose }: {
-  chat: ChatPresentation; expanded: boolean; directory: ClassroomDirectoryEntry[]; currentSceneTitle: string; onClose: () => void;
+  chat: ChatPresentation;
+  expanded: boolean;
+  directory: ClassroomDirectoryEntry[];
+  currentSceneTitle: string;
+  onClose: () => void;
 }) {
   const { t } = useI18n();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -129,12 +172,20 @@ export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitl
     && (!currentSubmission || currentSubmission.issue === 'unsaved' && !currentSubmission.busy && !currentSubmission.checking);
   const inputHint = sessions.selecting ? 'chatSessions.opening' : sessions.creating ? 'chatSessions.creating'
     : !sessions.selected ? 'chat.selectFirst' : sessions.deletions[sessions.selected.id] ? 'chat.sessionLocked'
-    : !chat.canSend ? 'chat.sceneUnavailable' : !canSubmit && currentSubmission ? 'chat.submitting' : 'chat.inputHint';
+    : !chat.canSend ? 'chat.sceneUnavailable' : !canSubmit && currentSubmission ? 'chat.submitting' : null;
   const initialReading = !sessions.selected && (!sessions.loaded || !!sessions.selecting) && !sessions.error;
-  return <aside id="classroom-chat" aria-labelledby="classroom-chat-title" aria-hidden={!expanded} inert={!expanded} data-classroom-chat
+  return <aside
+    id="classroom-chat"
+    aria-labelledby="classroom-chat-title"
+    aria-hidden={!expanded}
+    inert={!expanded}
+    data-classroom-chat
     onKeyDown={(event) => {
       event.stopPropagation();
-      if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); onClose(); }
+      if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        onClose();
+      }
     }}
     className={cn('relative z-[60] flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden bg-card shadow-xl transition-[flex-basis,opacity] duration-300 ease-in-out motion-reduce:transition-none',
       expanded ? 'basis-[min(28rem,70vw)] border-l border-border opacity-100 lg:basis-[var(--classroom-chat-width)]' : 'pointer-events-none basis-0 border-l-0 opacity-0')}>
@@ -204,7 +255,10 @@ export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitl
       </MessageScrollerProvider>
     </div>
     <Separator />
-    <form className="shrink-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={(event) => { event.preventDefault(); if (canSubmit) chat.onSend(); }}>
+    <form className="shrink-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={(event) => {
+      event.preventDefault();
+      if (canSubmit) chat.onSend();
+    }}>
       <FieldGroup><Field data-disabled={!chat.canSend} className="gap-2">
         <FieldLabel htmlFor="classroom-chat-input" className="sr-only">{t('chat.input')}</FieldLabel>
         <div className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground" title={currentSceneTitle}>
@@ -212,8 +266,19 @@ export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitl
           <span className="truncate">{currentSceneTitle || t('chat.sceneUnavailable')}</span>
         </div>
         <InputGroup className="has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-lg:[@media(max-height:650px)]:has-[>[data-align=block-end]]:flex-row">
-          <InputGroupTextarea ref={input} id="classroom-chat-input" rows={2} value={chat.state.draft} disabled={!chat.canSend}
-            aria-describedby="classroom-chat-input-hint" onChange={(event) => chat.onChange(event.target.value)}
+          <InputGroupTextarea
+            ref={input}
+            id="classroom-chat-input"
+            rows={2}
+            value={chat.state.draft}
+            disabled={!chat.canSend}
+            aria-describedby={inputHint ? 'classroom-chat-input-hint' : undefined}
+            onChange={(event) => chat.onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+              event.preventDefault();
+              if (canSubmit && !event.repeat) event.currentTarget.form?.requestSubmit();
+            }}
             placeholder={t(sessions.selected ? 'chat.input' : 'chat.selectFirst')} className="max-h-36 min-h-12 lg:min-h-16 max-lg:[@media(max-height:650px)]:max-h-20 max-lg:[@media(max-height:650px)]:min-h-9" />
           <InputGroupAddon align="block-end" className="justify-end max-lg:[@media(max-height:650px)]:w-auto max-lg:[@media(max-height:650px)]:self-center max-lg:[@media(max-height:650px)]:py-2">
             <Button type="submit" variant="default" size="icon" className="rounded-full" disabled={!canSubmit} aria-label={t('chat.send')} title={t('chat.send')}>
@@ -221,7 +286,7 @@ export function ClassroomChatPanel({ chat, expanded, directory, currentSceneTitl
             </Button>
           </InputGroupAddon>
         </InputGroup>
-        <FieldDescription id="classroom-chat-input-hint" className="px-1 text-xs">{t(inputHint)}</FieldDescription>
+        {inputHint && <FieldDescription id="classroom-chat-input-hint" className="px-1 text-xs">{t(inputHint)}</FieldDescription>}
       </Field></FieldGroup>
     </form>
     </>}

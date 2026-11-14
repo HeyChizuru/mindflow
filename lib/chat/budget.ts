@@ -4,14 +4,27 @@ import { z } from "zod";
 import { callLLM, streamLLM } from "@/lib/ai/llm";
 import { CHAT_EXECUTION_TTL_MS, type ChatErrorCode, type ChatFailureCode } from "@/lib/types/chat";
 
+// 一轮问答共享预算，防止模型和工具循环占用无限时间或上下文。
 export const CHAT_LIMITS = {
-  modelCalls: 12, tools: 4, searches: 2, callMs: 45000, saveMs: 15000,
-  inputChars: 64000, outputTokens: 6000, historyChars: 16000,
-  candidateChars: 24000, toolChars: 16000, recursion: 24,
+  modelCalls: 12,
+  tools: 4,
+  searches: 2,
+  callMs: 45000,
+  saveMs: 15000,
+  inputChars: 64000,
+  outputTokens: 6000,
+  historyChars: 16000,
+  candidateChars: 24000,
+  toolChars: 16000,
+  recursion: 24,
 } as const;
 
 export class ChatAgentError extends Error {
-  constructor(readonly code: ChatErrorCode, message: string, readonly failureCode: ChatFailureCode = "EXECUTION_FAILED") {
+  constructor(
+    readonly code: ChatErrorCode,
+    message: string,
+    readonly failureCode: ChatFailureCode = "EXECUTION_FAILED",
+  ) {
     super(message);
     this.name = "ChatAgentError";
   }
@@ -22,8 +35,9 @@ export class ChatBudget {
   private toolCalls = 0;
   private searches = 0;
   private readonly deadline: number;
+
   constructor(expiresAt: string, readonly signal: AbortSignal, startedBeforeClaim = Date.now()) {
-    // Never give a slow claim or clock skew more than one lease of local work.
+    // 本地执行时间不超过一次租期，并为最终结果保存预留时间。
     this.deadline = Math.min(Date.parse(expiresAt), startedBeforeClaim + CHAT_EXECUTION_TTL_MS) - CHAT_LIMITS.saveMs;
   }
   check() {
@@ -40,16 +54,30 @@ export class ChatBudget {
     this.check();
     return AbortSignal.any([this.signal, AbortSignal.timeout(Math.max(1, Math.min(CHAT_LIMITS.callMs, this.deadline - Date.now())))]);
   }
-  async model(model: LanguageModel, system: string, messages: ModelMessage[], tools?: Parameters<typeof callLLM>[0]["tools"], toolChoice?: Parameters<typeof callLLM>[0]["toolChoice"], onChunk?: (chunk: TextStreamPart<ToolSet>) => void) {
+  async model(
+    model: LanguageModel,
+    system: string,
+    messages: ModelMessage[],
+    tools?: Parameters<typeof callLLM>[0]["tools"],
+    toolChoice?: Parameters<typeof callLLM>[0]["toolChoice"],
+    onChunk?: (chunk: TextStreamPart<ToolSet>) => void,
+  ) {
     this.check();
     if (++this.modelCalls > CHAT_LIMITS.modelCalls || system.length + JSON.stringify(messages).length > CHAT_LIMITS.inputChars) {
       throw new ChatAgentError("LIMIT_EXCEEDED", "本轮模型调用次数或上下文长度已达上限");
     }
     const abortSignal = this.callSignal();
     try {
-      const params = { model, system, messages, tools, toolChoice,
-        maxRetries: 0, maxOutputTokens: CHAT_LIMITS.outputTokens, abortSignal,
-        // No execute callbacks: the graph owns all tool execution and continuation.
+      const params = {
+        model,
+        system,
+        messages,
+        tools,
+        toolChoice,
+        maxRetries: 0,
+        maxOutputTokens: CHAT_LIMITS.outputTokens,
+        abortSignal,
+        // 不在 SDK 内自动执行工具，由图节点负责调用工具和继续执行。
         stopWhen: () => true,
       };
       const result = onChunk ? await (async () => {
@@ -59,8 +87,12 @@ export class ChatBudget {
           if (chunk.type === 'error') throw chunk.error;
           onChunk(chunk);
         }
-        return { text: await stream.text, toolCalls: await stream.toolCalls,
-          response: await stream.response, finishReason: await stream.finishReason };
+        return {
+          text: await stream.text,
+          toolCalls: await stream.toolCalls,
+          response: await stream.response,
+          finishReason: await stream.finishReason,
+        };
       })() : await callLLM(params, "classroom-chat");
       this.check();
       if (abortSignal.aborted) throw new ChatAgentError("LIMIT_EXCEEDED", "模型调用超时，本轮未完成");
@@ -80,10 +112,25 @@ export class ChatBudget {
       throw new ChatAgentError("MODEL_FAILED", "对话模型调用失败，请核对模型能力或服务后重试", "MODEL_FAILED");
     }
   }
-  async structured<T extends z.ZodType>(model: LanguageModel, system: string, input: unknown, schema: T): Promise<z.output<T>> {
-    const result = await this.model(model, system + "\nYou must call structured_result once to return your decision. Do not answer with plain text.", [{ role: "user", content: JSON.stringify(input) }], {
-      structured_result: tool({ description: "Return the requested validated structured decision.", inputSchema: schema }),
-    }, "auto");
+  // 路由和筛选等决策通过工具返回结构化结果，再使用 schema 校验。
+  async structured<T extends z.ZodType>(
+    model: LanguageModel,
+    system: string,
+    input: unknown,
+    schema: T,
+  ): Promise<z.output<T>> {
+    const result = await this.model(
+      model,
+      system + "\nYou must call structured_result once to return your decision. Do not answer with plain text.",
+      [{ role: "user", content: JSON.stringify(input) }],
+      {
+        structured_result: tool({
+          description: "Return the requested validated structured decision.",
+          inputSchema: schema,
+        }),
+      },
+      "auto",
+    );
     const calls = result.toolCalls;
     if (calls.length !== 1 || calls[0].toolName !== "structured_result" || calls[0].invalid) {
       throw new ChatAgentError("MODEL_UNSUPPORTED", "模型未返回所需的结构化决策", "MODEL_FAILED");

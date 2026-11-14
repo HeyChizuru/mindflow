@@ -19,6 +19,7 @@ export async function POST(request: Request) {
       const content = generatedContentForOutlineSchema(body.outline).safeParse(body.content);
       if (!content.success) throw new SceneGenerationError("场景内容不符合定稿要求，请重新生成内容", 400);
       const { aiCall, options } = await prepareSceneActionsGeneration(request, body);
+      // 内容是上一请求的中间结果；动作生成后才组装并保存完整场景。
       const actions = await generateSceneActions(body.outline, content.data, aiCall, options);
       const scene = buildCompleteScene(body.outline, content.data, actions, body.stageId);
       if (!scene) throw new SceneGenerationError("场景内容与动作不完整，请重试", 502);

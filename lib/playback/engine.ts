@@ -98,6 +98,7 @@ export class PlaybackEngine {
     }, this.speechTimerRemaining);
   }
 
+  // 逐个消费场景动作；讲稿等待阅读计时，视觉动作执行后继续推进。
   private processNext(): void {
     if (this.mode !== 'playing') return;
     if (this.actionIndex === 0) {

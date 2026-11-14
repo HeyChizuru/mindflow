@@ -48,7 +48,6 @@ const MESSAGES: Record<string, string> = {
   "chat.sceneUnavailable": "当前场景暂不可提问",
   "chat.sessionLocked": "会话正在删除或删除结果待确认，暂不可发送",
   "chat.submitting": "本轮结果尚未确认，请先等待或核对记录",
-  "chat.inputHint": "Enter 换行 · 点击发送",
   "chat.latest": "查看最新回复",
   "chat.checking": "正在核对已保存结果",
   "chatSessions.refresh": "刷新会话列表",

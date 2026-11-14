@@ -39,7 +39,7 @@ export function SceneSidebar({ directory, currentSceneId, collapsed, onCollapseC
         <Button size="icon" variant="ghost" aria-label={t('classroom.collapseOutline')} onClick={() => { returnFocus(); onCollapseChange(true); }}><PanelLeftClose /></Button>
       </div>
       <h2 className="px-5 pb-3 pt-3 text-xs font-medium tracking-wide text-muted-foreground">{t('classroom.outline')}</h2>
-      {generation && generation.phase !== 'idle' && <>
+      {generation && generation.phase !== 'idle' && generation.phase !== 'complete' && <>
         <div className="max-h-[30dvh] shrink-0 overflow-y-auto px-3 pb-3" tabIndex={0} aria-label={t('background.title')}>
           <BackgroundGenerationNotice state={generation} ready={directory.filter(entry => entry.ready).length}
             total={directory.length} onRetry={onRetryGeneration} />
@@ -65,7 +65,7 @@ export function SceneSidebar({ directory, currentSceneId, collapsed, onCollapseC
               <span data-testid="scene-title" className="break-words text-sm font-medium leading-6">{entry.title}</span>
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                <Badge variant={targeted && generation.phase === 'failed' ? 'destructive' : entry.ready ? 'ready' : 'pending'}>
+                <Badge variant={entry.ready ? 'ready' : targeted && generation.phase !== 'failed' ? 'pending' : 'destructive'}>
                   {!entry.ready && <CircleDashed aria-hidden="true" />}<span>{status}</span>
                 </Badge>
               </span>

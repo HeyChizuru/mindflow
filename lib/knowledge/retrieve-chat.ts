@@ -6,6 +6,7 @@ import { getChatSourcesByChunkIds, searchSimilarChunks } from "@/lib/db/queries/
 import type { ChatSource } from "@/lib/types/chat";
 import { chatSourceSchema } from "@/lib/validators/chat";
 
+// 将本轮查询向量化，并仅检索当前课堂的资料片段。
 export async function retrieveChat(stageId: string, query: string, model: EmbeddingModel, abortSignal: AbortSignal): Promise<ChatSource[]> {
   const stage = await getStageById(stageId);
   if (!stage) throw new Error("Missing classroom");

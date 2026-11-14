@@ -14,6 +14,7 @@ export class ActionEngine {
   private remaining = 0;
   constructor(private onChange?: (effects: TeachingAction[]) => void, private scene?: Scene) {}
 
+  // 效果只作用于当前播放画面，不修改数据库中的场景或作答。
   execute(action: TeachingAction): ActionExecutionResult {
     const target = 'elementId' in action ? action.elementId : 'target' in action ? action.target : null;
     const targets = this.scene?.content.type === 'slide' ? this.scene.content.canvas.elements.map((item) => item.id)

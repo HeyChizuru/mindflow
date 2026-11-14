@@ -7,7 +7,7 @@ import { chatRequestSchema } from '@/lib/validators/chat';
 import type { ChatRequest } from '@/lib/types/chat';
 import type { ChatStreamPayload } from '@/lib/types/chat-stream';
 
-// Includes request preparation and persistence outside the separate 180-second execution lease.
+// 路由时限还包括执行租约之外的请求准备和数据保存。
 export const maxDuration = 210;
 
 const headers = { "Cache-Control": "no-store" };
@@ -19,6 +19,7 @@ function safeError(error: unknown) {
   return error instanceof ChatError ? error : new ChatError('READ_FAILED', '聊天服务暂时不可用，请重试');
 }
 
+// 将问答执行事件编码为 SSE；最终保存状态以返回的记录为准。
 function streamAnswer(request: Request, input: ChatRequest) {
   const connection = new AbortController();
   const signal = AbortSignal.any([request.signal, connection.signal]);
@@ -30,8 +31,12 @@ function streamAnswer(request: Request, input: ChatRequest) {
     start(controller) {
       function enqueue(text: string) {
         if (closed || signal.aborted) return;
-        try { controller.enqueue(encoder.encode(text)); }
-        catch { closed = true; connection.abort(); }
+        try {
+          controller.enqueue(encoder.encode(text));
+        } catch {
+          closed = true;
+          connection.abort();
+        }
       }
       const send = (event: ChatStreamPayload) =>
         enqueue('data: ' + JSON.stringify({ ...event, sequence: sequence++ }) + '\n\n');
@@ -48,17 +53,24 @@ function streamAnswer(request: Request, input: ChatRequest) {
           send({ type: 'error', error: safeError(error).toResponse() });
         } finally {
           clearInterval(heartbeat);
-          if (!closed) { closed = true; controller.close(); }
+          if (!closed) {
+            closed = true;
+            controller.close();
+          }
         }
       })();
     },
-    cancel() { closed = true; clearInterval(heartbeat); connection.abort(); },
+    cancel() {
+      closed = true;
+      clearInterval(heartbeat);
+      connection.abort();
+    },
   });
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' } });
 }
 
-/** Reading saved history never claims or resumes work. */
+/** 读取历史只返回已保存状态，不领取执行权或触发重试。 */
 export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
@@ -68,15 +80,20 @@ export async function GET(request: Request) {
       input[key] = value;
     }
     return NextResponse.json(await getChatHistory(input), { headers });
-  } catch (error) { return failure(error); }
+  } catch (error) {
+    return failure(error);
+  }
 }
 
-/** Restore first; only a claimed execution may call the model. */
+/** 提交或恢复问题；只有成功领取执行权的请求才调用模型。 */
 export async function POST(request: Request) {
   try {
     let input: unknown;
-    try { input = await request.json(); }
-    catch { throw new ChatError("INVALID_REQUEST", "请求正文必须是有效 JSON", { questionSaved: false }); }
+    try {
+      input = await request.json();
+    } catch {
+      throw new ChatError("INVALID_REQUEST", "请求正文必须是有效 JSON", { questionSaved: false });
+    }
     const parsed = chatRequestSchema.safeParse(input);
     if (!parsed.success) throw new ChatError('INVALID_REQUEST', '聊天请求字段或身份无效', { questionSaved: false });
     if (request.headers.get('accept')?.split(',').some((type) => type.trim().split(';')[0] === 'text/event-stream')) {
@@ -87,5 +104,7 @@ export async function POST(request: Request) {
       resolveEmbedding: async () => (await requireEmbeddingModel(request)).model,
       signal: request.signal,
     }), { headers });
-  } catch (error) { return failure(error); }
+  } catch (error) {
+    return failure(error);
+  }
 }

@@ -21,6 +21,7 @@ export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stage
   const firstPlayback = useRef(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const data = state.classroom;
+  // 发送问题时使用课堂当前场景，后续切场不改变已发送问题的归属。
   const scene = data?.scenes.find((item) => item.id === state.sceneId) ?? null;
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stage
 
   useEffect(() => {
     if (!scene) return;
+    // 每次切场或重播都使用独立的播放实例；清理时阻止旧回调更新界面。
     let active = true;
     const run = state.playbackRun, sceneId = scene.id;
     const update = (patch: Partial<PlayingState>) => {
@@ -52,7 +54,11 @@ export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stage
     engine.start();
     if (firstPlayback.current && chat.getSnapshot().open) engine.pause();
     firstPlayback.current = false;
-    return () => { active = false; engine.stop(); if (engineRef.current === engine) engineRef.current = null; };
+    return () => {
+      active = false;
+      engine.stop();
+      if (engineRef.current === engine) engineRef.current = null;
+    };
   }, [scene, state.playbackRun, chat]);
 
   const current = playing && playing.sceneId === scene?.id && playing.run === state.playbackRun ? playing : null;
@@ -84,13 +90,19 @@ export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stage
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey ||
         event.target instanceof HTMLElement && event.target.closest('[data-classroom-chat],input,textarea,select,button,a,[role=radio],[role=checkbox],[contenteditable=true]')) return;
-      if (event.code === 'Space') { event.preventDefault(); playPause(); }
+      if (event.code === 'Space') {
+        event.preventDefault();
+        playPause();
+      }
       else if (event.key === 'ArrowLeft') previous();
       else if (event.key === 'ArrowRight') next();
     };
     document.addEventListener('fullscreenchange', fullscreen);
     window.addEventListener('keydown', keydown);
-    return () => { document.removeEventListener('fullscreenchange', fullscreen); window.removeEventListener('keydown', keydown); };
+    return () => {
+      document.removeEventListener('fullscreenchange', fullscreen);
+      window.removeEventListener('keydown', keydown);
+    };
   }, [playPause, next, previous]);
   const notices = [...[state.positionNotice, state.notice].flatMap((sessionNotice) => sessionNotice ? [{
     ...sessionNotice,
@@ -114,7 +126,8 @@ export function PlaybackChromeRoot({ stageId, chatSelection, chatOpen }: { stage
         select(id);
         requestAnimationFrame(() => {
           const element = document.getElementById('question-' + encodeURIComponent(session.stageId + '/' + id + '/' + questionId));
-          element?.scrollIntoView({ block: 'center' }); element?.focus();
+          element?.scrollIntoView({ block: 'center' });
+          element?.focus();
         });
       }}
       onPlayPause={scene ? playPause : undefined}

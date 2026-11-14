@@ -26,6 +26,7 @@ const MIN_PARSE_CHARS = 200;
  * 向量化完成前不写库。页数、全文、切块替换与开关在同一事务提交；失败则整单回滚。
  * embeddingModel 由 Route 注入，本函数不读请求头，不调用对话模型。
  */
+// PDF 解析和向量生成在事务外完成；资料与就绪状态在同一事务写入。
 export async function ingestStage(
   stageId: string,
   options: { embeddingModel: EmbeddingModel; executionId: string },

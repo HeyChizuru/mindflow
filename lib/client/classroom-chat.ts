@@ -12,7 +12,13 @@ export type ClassroomChatItem = {
   issue?: 'unsaved' | 'unknown' | 'conflict';
   code?: ChatErrorCode;
   canResubmit?: boolean;
-  preview?: { executionId: string; text: string; phase: ChatPhase; teacherId: ChatTeacherId | null; active: boolean };
+  preview?: {
+    executionId: string;
+    text: string;
+    phase: ChatPhase;
+    teacherId: ChatTeacherId | null;
+    active: boolean;
+  };
 };
 export type ClassroomChatState = {
   open: boolean;
@@ -25,10 +31,18 @@ export type ClassroomChatState = {
   items: Record<string, ClassroomChatItem>;
 };
 
-/** Page-local interaction state. Saved records and execution ownership come only from the API. */
+/** 页面只维护交互状态；已保存记录和执行权以服务端返回为准。 */
+// 每个控制器绑定一个课堂会话；异步结果须回到原问题及其执行。
 export class ClassroomChat {
   private state: ClassroomChatState = {
-    open: false, draft: '', draftRequestId: null, reading: false, loaded: false, readFailed: false, unavailable: false, items: {},
+    open: false,
+    draft: '',
+    draftRequestId: null,
+    reading: false,
+    loaded: false,
+    readFailed: false,
+    unavailable: false,
+    items: {},
   };
   private listeners = new Set<() => void>();
   private active = false;
@@ -44,7 +58,10 @@ export class ClassroomChat {
     this.stageId = stageId.toLowerCase();
     this.sessionId = sessionId.toLowerCase();
   }
-  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  };
   getSnapshot = () => this.state;
   private patch(patch: Partial<ClassroomChatState>) {
     if (!this.active) return;
@@ -56,22 +73,32 @@ export class ClassroomChat {
     if (item) this.patch({ items: { ...this.state.items, [id]: { ...item, ...patch } } });
   }
   private touch(id: string) { this.writes.set(id, ++this.revision); }
-  private controller() { const controller = new AbortController(); this.controllers.add(controller); return controller; }
+  private controller() {
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    return controller;
+  }
   private current(epoch: number) { return this.active && this.epoch === epoch; }
   start = () => {
     if (this.active) return;
-    this.active = true; this.epoch++;
+    this.active = true;
+    this.epoch++;
   };
   dispose = () => {
-    this.active = false; this.epoch++;
+    this.active = false;
+    this.epoch++;
     this.controllers.forEach((controller) => controller.abort());
-    this.controllers.clear(); this.operations.clear();
+    this.controllers.clear();
+    this.operations.clear();
     // Strict Mode may start this same instance again; in-flight outcomes are unknown, not failed.
     this.state = { ...this.state, reading: false, items: Object.fromEntries(Object.entries(this.state.items)
       .map(([id, item]) => [id, { ...item, busy: false, checking: false, preview: undefined,
         ...(item.busy ? { issue: 'unknown' as const } : {}) }])) };
   };
-  open = () => { this.patch({ open: true }); void this.refresh(); };
+  open = () => {
+    this.patch({ open: true });
+    void this.refresh();
+  };
   close = () => this.patch({ open: false });
   changeDraft = (draft: string) => this.patch({ draft, draftRequestId: null });
   private missing(error: unknown) {
@@ -88,6 +115,7 @@ export class ClassroomChat {
       this.update(id, { issue: 'conflict', code: 'IDENTITY_CONFLICT' });
       return false;
     }
+    // 防止较旧的读取结果把当前状态或已完成的回复回退。
     const old = item?.record;
     if (old && (old.id !== record.id || old.updatedAt > record.updatedAt
       || old.status === 'completed' && record.status !== 'completed'
@@ -112,6 +140,7 @@ export class ClassroomChat {
     try {
       const records = await readChat({ stageId: this.stageId, sessionId: this.sessionId }, controller.signal);
       if (!this.current(epoch) || sequence !== this.readSequence) return;
+      // 请求发出后若该轮已有新写入，就不再用这次较早的快照覆盖。
       for (const record of records) {
         if ((this.writes.get(record.requestId) ?? 0) <= revision) this.merge(record);
       }
@@ -124,6 +153,7 @@ export class ClassroomChat {
     }
   };
 
+  // 发送时固定场景和请求身份，后续恢复沿用同一轮问题。
   send = async (sceneId: string, hasKnowledgeBase: boolean) => {
     if (!this.active || this.state.unavailable) return;
     const existing = this.state.draftRequestId && this.state.items[this.state.draftRequestId];
@@ -143,12 +173,17 @@ export class ClassroomChat {
   private async perform(id: string, request: ChatRequest, hasKnowledgeBase: boolean) {
     if (!this.active || this.state.unavailable || this.operations.has(id)) return;
     const epoch = this.epoch;
-    this.operations.add(id); this.touch(id);
+    this.operations.add(id);
+    this.touch(id);
     this.update(id, { busy: true, code: undefined, issue: undefined, canResubmit: false, preview: undefined });
     const controller = this.controller();
     try {
       let headers: HeadersInit = {};
-      try { headers = this.headers(hasKnowledgeBase); } catch { /* Let the server preserve the question and report missing configuration. */ }
+      try {
+        headers = this.headers(hasKnowledgeBase);
+      } catch {
+        // 缺少配置时仍交给服务端保存问题并明确报告错误。
+      }
       const record = await sendChat(request, headers, controller.signal, (event) => {
         if (!this.current(epoch) || this.state.unavailable || this.state.items[id]?.record?.status === 'completed') return;
         this.touch(id);
@@ -158,11 +193,15 @@ export class ClassroomChat {
             text: '', phase: 'preparing', teacherId: null, active: true } });
           return;
         }
+        // 只接受当前执行的增量，避免重试或切换后旧流污染新回复。
         const preview = this.state.items[id]?.preview;
         if (!preview || preview.executionId !== event.identity.executionId) return;
-        if (event.type === 'progress') this.update(id, { preview: { ...preview, phase: event.phase,
-          teacherId: event.teacherId ?? preview.teacherId } });
-        else if (event.type === 'answer') this.update(id, { preview: { ...preview, text: event.reply, teacherId: event.teacherId } });
+        if (event.type === 'progress') this.update(id, {
+          preview: { ...preview, phase: event.phase, teacherId: event.teacherId ?? preview.teacherId },
+        });
+        else if (event.type === 'answer') this.update(id, {
+          preview: { ...preview, text: event.reply, teacherId: event.teacherId },
+        });
         else {
           if (preview.text.length + event.text.length > 12000) throw new ChatRequestError();
           this.update(id, { preview: { ...preview, text: preview.text + event.text } });
@@ -228,11 +267,12 @@ export class ClassroomChat {
     }
   };
 
+  // 结果不明时先读回，再决定恢复已完成结果还是显式重试。
   recover = async (id: string, hasKnowledgeBase: boolean) => {
     const item = this.state.items[id];
     if (!this.active || this.state.unavailable || !item || this.operations.has(id) || item.checking || item.issue === 'conflict') return;
     const epoch = this.epoch;
-    // Recovery is user initiated. A GET never starts an execution by itself.
+    // 由用户显式发起恢复；先读取原记录，GET 本身不会启动模型执行。
     const record = await this.readItem(id);
     if (!this.current(epoch) || record === undefined || this.operations.has(id)) return;
     const current = this.state.items[id];

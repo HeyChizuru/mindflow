@@ -2,15 +2,26 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { readChatTurns, insertChatTurn, lockChatTurn, claimChatTurn, completeChatTurn, failChatTurn } from "@/lib/db/queries/chat";
+import {
+  readChatTurns,
+  insertChatTurn,
+  lockChatTurn,
+  claimChatTurn,
+  completeChatTurn,
+  failChatTurn,
+} from "@/lib/db/queries/chat";
 import { getChatSourcesByChunkIds } from "@/lib/db/queries/chunks";
 import { getStageById } from "@/lib/db/queries/stages";
 import { lockChatSession, readChatSessions, touchChatSession } from "@/lib/db/queries/chat-sessions";
 import { ClassroomError, getLockedPlayableScene } from "@/lib/services/classroom";
-import type { ChatTurn, SubmitChat, ChatClaimResult, ChatSaveResult, ChatReadResult,
-  ChatErrorCode, ChatErrorDetails, ChatErrorResponse, ChatExecutionKey } from "@/lib/types/chat";
-import { submitChatSchema, readChatSchema, chatTurnKeySchema, retryChatSchema,
-  completeChatSchema, failChatSchema, chatSourceSchema } from "@/lib/validators/chat";
+import type {
+  ChatTurn, SubmitChat, ChatClaimResult, ChatSaveResult, ChatReadResult,
+  ChatErrorCode, ChatErrorDetails, ChatErrorResponse, ChatExecutionKey,
+} from "@/lib/types/chat";
+import {
+  submitChatSchema, readChatSchema, chatTurnKeySchema, retryChatSchema,
+  completeChatSchema, failChatSchema, chatSourceSchema,
+} from "@/lib/validators/chat";
 
 export class ChatError extends Error {
   readonly statusCode: number;
@@ -25,7 +36,9 @@ export class ChatError extends Error {
       : ["NOT_READY", "IDENTITY_CONFLICT", "EXECUTION_ACTIVE", "EXECUTION_CONFLICT", "INVALID_SOURCE"].includes(code) ? 409 : 500;
     this.details = { questionSaved: null, turnId: null, record: null, ...details };
   }
-  toResponse(): ChatErrorResponse { return { success: false, code: this.code, error: this.message, ...this.details }; }
+  toResponse(): ChatErrorResponse {
+    return { success: false, code: this.code, error: this.message, ...this.details };
+  }
 }
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const parsed = schema.safeParse(input);
@@ -50,7 +63,7 @@ async function requireSession(key: { stageId: string; sessionId: string }, tx: P
   if (!await lockChatSession(key, tx)) throw new ChatError("SESSION_UNAVAILABLE", "会话已不存在或不属于本课堂");
 }
 
-/** Read-only snapshot. Does not need model configuration and never resumes an execution. */
+/** 只读取已保存快照，不需要模型配置，也不会自动续跑。 */
 export async function getChatHistory(input: unknown): Promise<ChatReadResult> {
   const { stageId, sessionId, ...filter } = parse(readChatSchema, input);
   try {
@@ -67,7 +80,8 @@ export async function getChatHistory(input: unknown): Promise<ChatReadResult> {
   }
 }
 
-/** Only accepts a question. Successful pending means saved, not answered. */
+/** 先保存用户问题；pending 仅表示问题已保存，不表示模型已经回复。 */
+// 同一会话内以请求身份去重，先保存问题再开始模型执行。
 export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult> {
   const data = parse(submitChatSchema, input);
   const turnId = randomUUID();
@@ -102,10 +116,15 @@ export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult
     if (!writing && !existingRecord) throw new ChatError("READ_FAILED", "未能核对聊天目标或已有记录，请先重新读取", {
       questionSaved: identityChecked ? false : null,
     });
-    // A commit acknowledgement can be lost. Always reconcile before claiming success/failure.
+    // 提交回执可能丢失，必须按原请求身份读回后才能判断保存结果。
     let recovered: ChatTurn | undefined;
-    try { recovered = (await getChatHistory({ stageId: data.stageId, sessionId: data.sessionId, requestId: data.requestId })).records[0]; }
-    catch (readError) {
+    try {
+      recovered = (await getChatHistory({
+        stageId: data.stageId,
+        sessionId: data.sessionId,
+        requestId: data.requestId,
+      })).records[0];
+    } catch (readError) {
       if (readError instanceof ChatError && readError.code === "SESSION_UNAVAILABLE") throw readError;
       throw new ChatError("SAVE_UNKNOWN", "未能确认本轮最新状态，请按请求身份重新读取",
         existingRecord ? savedDetails(existingRecord) : { turnId });
@@ -115,7 +134,8 @@ export async function submitChatQuestion(input: unknown): Promise<ChatSaveResult
   }
 }
 
-/** Internal only. No transaction is held while a future model or tool runs. */
+/** 在短事务中领取执行权；后续模型和工具调用不持有此事务。 */
+// 短事务内领取有期限的执行身份，模型调用发生在事务外。
 async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult> {
   const parsed = retry ? parse(retryChatSchema, input) : { ...parse(chatTurnKeySchema, input), expectedExecutionId: null };
   const { stageId, sessionId, turnId, sceneId } = parsed;
@@ -146,7 +166,7 @@ async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult>
       try {
         const record = (await getChatHistory({ stageId, sessionId, turnId })).records[0];
         if (record?.sceneId === sceneId) {
-          // This invocation generated the identity: only it may recover ownership after an uncertain claim.
+          // 领取结果不明时，只有读回本次生成的执行身份，才能确认由本次调用继续执行。
           if (record.executionId === executionId && record.status === "processing" && !record.executionExpired) {
             return { record, ownsExecution: true };
           }
@@ -161,13 +181,24 @@ async function acquire(input: unknown, retry: boolean): Promise<ChatClaimResult>
       observed ? savedDetails(observed) : { turnId });
   }
 }
-export function claimChatExecution(input: unknown) { return acquire(input, false); }
-export function retryChatExecution(input: unknown) { return acquire(input, true); }
+export function claimChatExecution(input: unknown) {
+  return acquire(input, false);
+}
+export function retryChatExecution(input: unknown) {
+  return acquire(input, true);
+}
 
-/** Both completion and failure enforce the original classroom, scene, turn, execution and deadline. */
+/** 写回完成或失败前，核对课堂、场景、轮次、执行身份和有效期。 */
+// 写回时重新核对会话、场景、执行身份和期限，拒绝过期执行。
 async function finish(input: unknown, complete: boolean, expectedSources?: ChatTurn["sources"]): Promise<ChatTurn> {
   const data = complete ? parse(completeChatSchema, input) : parse(failChatSchema, input);
-  const key: ChatExecutionKey = { stageId: data.stageId, sessionId: data.sessionId, turnId: data.turnId, sceneId: data.sceneId, executionId: data.executionId };
+  const key: ChatExecutionKey = {
+    stageId: data.stageId,
+    sessionId: data.sessionId,
+    turnId: data.turnId,
+    sceneId: data.sceneId,
+    executionId: data.executionId,
+  };
   let observed: ChatTurn | null = null;
   let writing = false;
   try {
@@ -176,6 +207,7 @@ async function finish(input: unknown, complete: boolean, expectedSources?: ChatT
       const record = await lockChatTurn(key, tx);
       if (!record) throw new ChatError("NOT_FOUND", "该课堂或场景下没有此轮聊天记录");
       observed = record;
+      // 重试会更换执行身份，旧请求即使晚到也不能覆盖当前记录。
       if (record.executionId !== key.executionId) conflict(record);
       if (record.status === "completed") return record;
       if (!complete && record.status === "failed") return record;
@@ -221,5 +253,9 @@ async function finish(input: unknown, complete: boolean, expectedSources?: ChatT
       observed ? savedDetails(observed) : { turnId: key.turnId });
   }
 }
-export function completeChatExecution(input: unknown, expectedSources?: ChatTurn["sources"]) { return finish(input, true, expectedSources); }
-export function failChatExecution(input: unknown) { return finish(input, false); }
+export function completeChatExecution(input: unknown, expectedSources?: ChatTurn["sources"]) {
+  return finish(input, true, expectedSources);
+}
+export function failChatExecution(input: unknown) {
+  return finish(input, false);
+}

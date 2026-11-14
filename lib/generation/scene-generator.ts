@@ -101,19 +101,19 @@ function fixElementDefaults(
 ): GeneratedSlideData['elements'] {
   return elements.map((el) => {
     // Fix line elements
-// 修复线条元素
+    // 修复线条元素
     if (el.type === 'line') {
       const lineEl = el as Record<string, unknown>;
 
       // Ensure points field exists with default values
-// 确保 points 字段存在并具有默认值
+      // 确保 points 字段存在并具有默认值
       if (!lineEl.points || !Array.isArray(lineEl.points) || lineEl.points.length !== 2) {
         log.warn(`Line element missing points, adding defaults`);
         lineEl.points = ['', ''] as [string, string]; // Default: no markers on either end / 默认：两端无标记
       }
 
       // Ensure start/end exist
-// 确保起点/终点存在
+      // 确保起点/终点存在
       if (!lineEl.start || !Array.isArray(lineEl.start)) {
         lineEl.start = [el.left ?? 0, el.top ?? 0];
       }
@@ -122,13 +122,13 @@ function fixElementDefaults(
       }
 
       // Ensure style exists
-// 确保样式存在
+      // 确保样式存在
       if (!lineEl.style) {
         lineEl.style = 'solid';
       }
 
       // Ensure color exists
-// 确保颜色存在
+      // 确保颜色存在
       if (!lineEl.color) {
         lineEl.color = '#333333';
       }
@@ -137,7 +137,7 @@ function fixElementDefaults(
     }
 
     // Fix text elements
-// 修复文本元素
+    // 修复文本元素
     if (el.type === 'text') {
       const textEl = el as Record<string, unknown>;
 
@@ -155,7 +155,7 @@ function fixElementDefaults(
     }
 
     // Fix image elements
-// 修复图片元素
+    // 修复图片元素
     if (el.type === 'image') {
       const imageEl = el as Record<string, unknown>;
 
@@ -167,7 +167,7 @@ function fixElementDefaults(
     }
 
     // Fix shape elements
-// 修复形状元素
+    // 修复形状元素
     if (el.type === 'shape') {
       const shapeEl = el as Record<string, unknown>;
 
@@ -176,7 +176,7 @@ function fixElementDefaults(
       }
       if (!shapeEl.path) {
         // Default to rectangle
-// 默认回退为矩形
+        // 默认回退为矩形
         const w = el.width ?? 100;
         const h = el.height ?? 100;
         shapeEl.path = `M0 0 L${w} 0 L${w} ${h} L0 ${h} Z`;
@@ -312,7 +312,7 @@ async function generateSlideContent(
 
 
   // Canvas dimensions (matching viewportSize and viewportRatio)
-// 画布尺寸（匹配 viewportSize 和 viewportRatio）
+  // 画布尺寸（匹配 viewportSize 和 viewportRatio）
   const canvasWidth = 1000;
   const canvasHeight = 562.5;
 
@@ -344,6 +344,7 @@ function acceptSlideContent(
   outline: SlideSceneOutline,
   response: string,
 ): { ok: true; value: GeneratedSlideContent } | { ok: false; issues: string } {
+  // 模型返回的是文本：先解析，再做元素规范化和定稿约束校验。
   const generatedData = parseJsonResponse<GeneratedSlideData>(response);
 
   if (!generatedData || !Array.isArray(generatedData.elements)
@@ -499,7 +500,7 @@ function normalizeQuizAnswer(
   options: { value: string; label: string }[] | undefined,
 ): string[] | undefined {
   // AI might use "correctAnswer", "answer", or "correct_answer"
-// AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段
+  // AI 可能使用 "correctAnswer"、"answer" 或 "correct_answer" 字段
   const raw =
     question.answer ??
     question.correctAnswer ??
@@ -539,7 +540,8 @@ export async function generateSceneActions(
 
   if (outline.type === 'slide' && 'elements' in content) {
     // Format element list for AI to select from
-// 格式化元素列表供 AI 选择引用
+    // 格式化元素列表供 AI 选择引用
+    // 动作只能从已生成的元素中选择目标，因此要把元素 ID 和摘要传给模型。
     const elementsText = formatElementsForPrompt(content.elements);
 
     const prompts = buildPrompt(PROMPT_IDS.SLIDE_ACTIONS, {
@@ -565,7 +567,7 @@ export async function generateSceneActions(
 
   if (outline.type === 'quiz' && 'questions' in content) {
     // Format question list for AI reference
-// 格式化问题列表供 AI 参考
+    // 格式化问题列表供 AI 参考
     const questionsText = formatQuestionsForPrompt(content.questions);
 
     const prompts = buildPrompt(PROMPT_IDS.QUIZ_ACTIONS, {
@@ -601,7 +603,7 @@ function formatElementsForPrompt(elements: SlideElement[]): string {
       let summary = '';
       if (el.type === 'text' && 'content' in el) {
         // Extract text content summary (strip HTML tags)
-// 提取文本内容摘要（去除 HTML 标签）
+        // 提取文本内容摘要（去除 HTML 标签）
         const textContent = ((el.content as string) || '').replace(/<[^>]*>/g, '').substring(0, 50);
         summary = `Content summary: "${textContent}${textContent.length >= 50 ? '...' : ''}"`;
       } else if (el.type === 'chart' && 'chartType' in el) {
@@ -644,14 +646,14 @@ function processActions(actions: Action[], elements: { id: string }[]): Action[]
 
   return actions.map((action) => {
     // Ensure each action has an ID
-// 确保每个动作有 ID
+    // 确保每个动作有 ID
     const processedAction: Action = {
       ...action,
       id: action.id || `action_${nanoid(8)}`,
     };
 
     // Validate spotlight elementId
-// 校验聚焦元素的 elementId
+    // 校验聚焦元素的 elementId
     if ((processedAction.type === 'spotlight' || processedAction.type === 'laser')
       && !elementIds.has(processedAction.elementId)) {
       throw new SceneGenerationError('动作指向不存在的本页元素，请重试', 502);

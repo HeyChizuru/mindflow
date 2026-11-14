@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ClassroomChatSessions } from '@/lib/client/classroom-chat-sessions';
 import { modelRequestHeaders } from '@/lib/client/llm/settings';
 
+// 将当前课堂的会话控制器连接到 React，界面状态由控制器统一维护。
 export function useClassroomChat(stageId: string, selection?: string, openIntent = false) {
   const router = useRouter();
   const chat = useMemo(() => new ClassroomChatSessions(stageId, modelRequestHeaders, {
@@ -17,7 +18,10 @@ export function useClassroomChat(stageId: string, selection?: string, openIntent
     },
     navigate: (session) => router.push('/classroom/' + session.stageId + '?' + new URLSearchParams({ chatSession: session.id, chatOpen: '1' })),
   }), [stageId, router]);
-  useEffect(() => { chat.start(); return () => chat.dispose(); }, [chat]);
+  useEffect(() => {
+    chat.start();
+    return () => chat.dispose();
+  }, [chat]);
   useEffect(() => { void chat.restore(selection, openIntent); }, [chat, selection, openIntent]);
   const sessions = useSyncExternalStore(chat.subscribe, chat.getSnapshot, chat.getSnapshot);
   return { chat, sessions, state: { ...sessions.message, open: sessions.open } };

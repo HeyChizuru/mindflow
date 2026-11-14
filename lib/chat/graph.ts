@@ -10,6 +10,7 @@ import { checkFinalAnswer, prepareChatContext, type ChatContext } from "./contex
 import { chatTools, executeChatTool } from "./tools";
 import { ReplyPreview } from './reply-preview';
 
+// 一轮问答在图节点之间共享的状态；教师身份和工具调用都属于当前轮。
 const AnswerState = Annotation.Root({
   context: Annotation<ChatContext | null>,
   teacherId: Annotation<ChatTeacherId | null>,
@@ -23,7 +24,11 @@ function onlyAddsCitations(original: string, formatted: string): boolean {
   let input = 0;
   let output = 0;
   while (output < formatted.length) {
-    if (input < original.length && original[input] === formatted[output]) { input++; output++; continue; }
+    if (input < original.length && original[input] === formatted[output]) {
+      input++;
+      output++;
+      continue;
+    }
     const marker = formatted.slice(output).match(/^[ \t]?\[\d+\]/);
     if (!marker) return false;
     output += marker[0].length;
@@ -31,13 +36,20 @@ function onlyAddsCitations(original: string, formatted: string): boolean {
   return input === original.length;
 }
 
-export async function runChatGraph(record: ChatTurn, dependencies: {
-  model: LanguageModel; budget: ChatBudget; resolveEmbedding: () => Promise<EmbeddingModel>; observe?: ChatObserver;
-}) {
+export async function runChatGraph(
+  record: ChatTurn,
+  dependencies: {
+    model: LanguageModel;
+    budget: ChatBudget;
+    resolveEmbedding: () => Promise<EmbeddingModel>;
+    observe?: ChatObserver;
+  },
+) {
   const { model, budget } = dependencies;
   const identity = chatStreamIdentity(record);
   const progress = (phase: ChatPhase, teacherId: ChatTeacherId | null = null) =>
     dependencies.observe?.({ type: 'progress', identity, phase, teacherId });
+  // 只收集本轮工具实际返回的来源，最终回复不能引用这个集合以外的片段。
   const sources = new Map<string, ChatSource>();
   const graph = new StateGraph(AnswerState)
     .addNode("prepare_context", async () => {
@@ -45,53 +57,87 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
       const context = await prepareChatContext(record, model, budget);
       return { context };
     })
+    // 一次路由同时确定教师，以及本轮是否需要轻量测验保护。
     .addNode("route_teacher", async (state) => {
       if (!state.context) throw new ChatAgentError("CONTEXT_FAILED", "本轮教师上下文未就绪");
       progress('routing');
-      const route = await budget.structured(model, buildChatPrompt("chat-router"), {
-        question: record.question, context: state.context,
-      }, chatRouteSchema);
+      const route = await budget.structured(
+        model,
+        buildChatPrompt("chat-router"),
+        { question: record.question, context: state.context },
+        chatRouteSchema,
+      );
       const context = state.context;
       const needsQuizCheck = route.needsQuizCheck && context.protectedQuestions.length > 0;
-      return { teacherId: route.teacherId, needsQuizCheck, messages: [
-        { role: "user" as const, content: JSON.stringify({ referenceContext: {
-          course: context.course, scene: context.scene, protectedQuestions: context.protectedQuestions,
-          pendingGrading: context.pendingGrading, memory: context.memory, needsQuizCheck,
-        } }) },
-        ...context.history,
-        { role: "user" as const, content: record.question },
-      ] };
+      return {
+        teacherId: route.teacherId,
+        needsQuizCheck,
+        messages: [
+          {
+            role: "user" as const,
+            content: JSON.stringify({
+              referenceContext: {
+                course: context.course,
+                scene: context.scene,
+                protectedQuestions: context.protectedQuestions,
+                pendingGrading: context.pendingGrading,
+                memory: context.memory,
+                needsQuizCheck,
+              },
+            }),
+          },
+          ...context.history,
+          { role: "user" as const, content: record.question },
+        ],
+      };
     })
+    // 教师可以返回最终回答，也可以请求工具；受保护轮次暂不外发正文。
     .addNode("teacher", async (state) => {
       if (!state.context || !state.teacherId) throw new ChatAgentError("CONTEXT_FAILED", "本轮教师上下文未就绪");
       const protectedReply = state.needsQuizCheck;
       progress(protectedReply ? 'reviewing' : 'answering', state.teacherId);
       const previews = new Map<string, ReplyPreview>();
       let preview = '';
-      const tools = { ...chatTools(state.context.course.hasKnowledgeBase),
-        final_answer: tool({ description: "Return the complete draft reply and actually used source IDs. This is a structured output, not a database write.", inputSchema: chatAnswerSchema }),
+      const tools = {
+        ...chatTools(state.context.course.hasKnowledgeBase),
+        // final_answer 是结构化输出协议，不是保存回复的数据库工具。
+        final_answer: tool({
+          description: "Return the complete draft reply and actually used source IDs. This is a structured output, not a database write.",
+          inputSchema: chatAnswerSchema,
+        }),
       };
-      const result = await budget.model(model, buildChatPrompt("chat-teacher", state.teacherId), state.messages, tools, "auto",
+      const result = await budget.model(
+        model,
+        buildChatPrompt("chat-teacher", state.teacherId),
+        state.messages,
+        tools,
+        "auto",
         dependencies.observe ? (chunk) => {
           if (protectedReply) return;
+          // 模型流返回的是工具参数 JSON：只提取 reply 的增量，不展示内部包装。
           if (chunk.type === 'tool-input-start' && chunk.toolName === 'final_answer') previews.set(chunk.id, new ReplyPreview());
           if (chunk.type !== 'tool-input-delta') return;
           const reader = previews.get(chunk.id);
           if (!reader) return;
           let text: string;
-          try { text = reader.append(chunk.delta); }
-          catch { throw new ChatAgentError('REPLY_INVALID', '回复增量格式无效，本轮未完成', 'REPLY_INVALID'); }
+          try {
+            text = reader.append(chunk.delta);
+          } catch {
+            throw new ChatAgentError('REPLY_INVALID', '回复增量格式无效，本轮未完成', 'REPLY_INVALID');
+          }
           if (text) {
             preview += text;
             dependencies.observe!({ type: 'delta', identity, text });
           }
-        } : undefined);
+        } : undefined,
+      );
       const final = result.toolCalls.find((call) => call.toolName === "final_answer");
       if (final) {
         const parsed = chatAnswerSchema.safeParse(final.input);
         if (final.invalid || result.toolCalls.length !== 1 || !parsed.success) {
           throw new ChatAgentError("REPLY_INVALID", "模型的完整回复出口无效或与资料调用混用", "REPLY_INVALID");
         }
+        // 临时预览必须与模型提交的完整正文一致，避免展示和最终结果相互矛盾。
         if (preview && preview !== parsed.data.reply) {
           throw new ChatAgentError('REPLY_INVALID', '回复增量与完整结果不一致，本轮未完成', 'REPLY_INVALID');
         }
@@ -101,9 +147,15 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
         if (result.toolCalls.some((call) => call.invalid || !Object.hasOwn(tools, call.toolName))) {
           throw new ChatAgentError("TOOL_FAILED", "模型返回了无效或未授权的工具调用", "TOOL_FAILED");
         }
-        return { messages: [...state.messages, ...result.response.messages], calls: result.toolCalls.map((call) => ({
-          toolCallId: call.toolCallId, toolName: call.toolName, input: call.input,
-        })) };
+        // 将模型提出的调用交给 tools 节点执行，而非在模型 SDK 内自动执行。
+        return {
+          messages: [...state.messages, ...result.response.messages],
+          calls: result.toolCalls.map((call) => ({
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            input: call.input,
+          })),
+        };
       }
       if (dependencies.observe) {
         throw new ChatAgentError('MODEL_UNSUPPORTED', '模型未返回可流式处理的最终回复，请检查模型工具能力', 'MODEL_FAILED');
@@ -138,13 +190,26 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
         const result = await executeChatTool(call.toolName, call.input, {
           ...dependencies, stageId: record.stageId, context: state.context, sources,
         });
-        messages.push({ role: "tool", content: [{ type: "tool-result", toolCallId: call.toolCallId,
-          toolName: call.toolName, output: { type: "json", value: JSON.parse(JSON.stringify({
-            ...result, pendingGrading: state.context.pendingGrading,
-          })) } }] });
+        // 工具结果保留调用 ID，下一次教师调用才能对应到它请求的工具。
+        messages.push({
+          role: "tool",
+          content: [{
+            type: "tool-result",
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            output: {
+              type: "json",
+              value: JSON.parse(JSON.stringify({
+                ...result,
+                pendingGrading: state.context.pendingGrading,
+              })),
+            },
+          }],
+        });
       }
       return { messages: [...state.messages, ...messages], calls: [] };
     })
+    // 最终引用只能来自本轮工具取得的资料；命中保护时再检查回答。
     .addNode("validate_answer", async (state) => {
       progress('validating', state.teacherId);
       if (!state.answer || !state.context) throw new ChatAgentError("REPLY_INVALID", "本轮未产生完整回复", "REPLY_INVALID");
@@ -158,6 +223,7 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
       budget.check();
       return {};
     })
+    // 工具执行后回到同一教师，直到产生最终回答或达到预算限制。
     .addEdge(START, "prepare_context")
     .addEdge("prepare_context", "route_teacher")
     .addEdge("route_teacher", "teacher")
@@ -165,9 +231,10 @@ export async function runChatGraph(record: ChatTurn, dependencies: {
     .addEdge("tools", "teacher")
     .addEdge("validate_answer", END)
     .compile();
-  const result = await graph.invoke({ context: null, teacherId: null, needsQuizCheck: false, messages: [], calls: [], answer: null }, {
-    recursionLimit: CHAT_LIMITS.recursion, signal: budget.signal,
-  });
+  const result = await graph.invoke(
+    { context: null, teacherId: null, needsQuizCheck: false, messages: [], calls: [], answer: null },
+    { recursionLimit: CHAT_LIMITS.recursion, signal: budget.signal },
+  );
   if (!result.answer || !result.teacherId) throw new ChatAgentError("REPLY_INVALID", "本轮问答未完成", "REPLY_INVALID");
   return { ...result.answer, teacherId: result.teacherId, sources: result.answer.chunkIds.map((id) => sources.get(id)!) };
 }

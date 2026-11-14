@@ -56,6 +56,7 @@ type SimilarChunkRow = {
 };
 
 /** Resolve explicit sources using both chunk and document ownership; no embedding service required. */
+// 保存引用前按课堂和文档归属重新读取来源，不依赖模型声称的 ID。
 export async function getChatSourcesByChunkIds(
   stageId: string, chunkIds: string[], db: Pick<PrismaClient, "$queryRaw"> = prisma,
 ) {

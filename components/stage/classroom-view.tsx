@@ -42,7 +42,7 @@ export function ClassroomView(props: ClassroomViewProps) {
   const notices = props.notices ?? (props.notice ? [props.notice] : []);
   const index = directory.findIndex((item) => item.sceneId !== null && item.sceneId === scene?.id);
   const courseEnd = props.allScenesReady && props.playback === 'ended' && index === directory.length - 1 && index >= 0;
-  return <div ref={shell} style={layout.style} className="mindflow-surface classroom-shell relative flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
+  return <div ref={shell} style={layout.style} className="mindflow-surface classroom-shell relative isolate flex h-full min-h-0 flex-1 overflow-hidden text-foreground max-lg:max-h-[var(--classroom-viewport-height)]">
     <GlobalControls chatOpen={!!props.chat?.state.open} />
     {pageState === 'ready' && <SceneSidebar directory={directory} currentSceneId={scene?.id ?? null}
       collapsed={props.sidebarCollapsed} onCollapseChange={props.onToggleSidebar} onSceneSelect={props.onSceneSelect}

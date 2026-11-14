@@ -3,6 +3,7 @@ import { buildPrompt } from "@/lib/prompts";
 import type { PromptId } from "@/lib/prompts/types";
 import { CHAT_TEACHERS, type ChatTeacherId } from "@/lib/types/chat";
 
+// 根据固定教师角色注入职责；角色路由与提示词组装分开。
 export function buildChatPrompt(id: Extract<PromptId, `chat-${string}`>, teacherId?: ChatTeacherId) {
   const roles: Record<ChatTeacherId, string> = {
     explainer: "Explain concepts, causes and prerequisites clearly, using examples when useful.",

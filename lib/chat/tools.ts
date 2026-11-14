@@ -9,17 +9,34 @@ import type { ChatSource } from "@/lib/types/chat";
 import { ChatBudget, ChatAgentError, CHAT_LIMITS } from "./budget";
 import { filterRelevantCandidates, protectedQuestions, readChatClassroom, type ChatContext } from "./context";
 
+// 只暴露读取场景和按需检索本课 PDF 的工具，不允许修改课程数据。
 export function chatTools(hasKnowledgeBase: boolean): ToolSet {
   return {
-    read_scene: tool({ description: "Read one ready saved scene in this classroom. Select its sceneId from the course directory.", inputSchema: readSceneToolSchema }),
-    ...(hasKnowledgeBase ? { search_course_pdf: tool({ description: "Search this course's PDF when document evidence is needed. Use a specific contextual query; revise it if no relevant evidence was found.", inputSchema: searchPdfToolSchema }) } : {}),
+    read_scene: tool({
+      description: "Read one ready saved scene in this classroom. Select its sceneId from the course directory.",
+      inputSchema: readSceneToolSchema,
+    }),
+    ...(hasKnowledgeBase ? {
+      search_course_pdf: tool({
+        description: "Search this course's PDF when document evidence is needed. Use a specific contextual query; revise it if no relevant evidence was found.",
+        inputSchema: searchPdfToolSchema,
+      }),
+    } : {}),
   };
 }
 
+// 在服务端执行工具并限制归属、调用次数和结果长度。
 export async function executeChatTool(
-  name: string, input: unknown,
-  dependencies: { stageId: string; context: ChatContext; sources: Map<string, ChatSource>; model: LanguageModel;
-    resolveEmbedding: () => Promise<EmbeddingModel>; budget: ChatBudget },
+  name: string,
+  input: unknown,
+  dependencies: {
+    stageId: string;
+    context: ChatContext;
+    sources: Map<string, ChatSource>;
+    model: LanguageModel;
+    resolveEmbedding: () => Promise<EmbeddingModel>;
+    budget: ChatBudget;
+  },
 ) {
   const { stageId, context, model, budget, sources } = dependencies;
   if (name !== "read_scene" && name !== "search_course_pdf") throw new ChatAgentError("TOOL_FAILED", "模型选择了未授权工具", "TOOL_FAILED");
@@ -27,9 +44,10 @@ export async function executeChatTool(
   let toolSignal: AbortSignal | undefined;
   try {
     const classroom = await readChatClassroom(stageId);
-    // Refresh saved facts without changing this turn's routing decision.
+    // 读取工具时刷新已保存的题目和批改状态，但不重新决定本轮保护分流。
     context.protectedQuestions = protectedQuestions(classroom);
-    context.pendingGrading = classroom.answers.filter((answer) => answer.status !== "completed")
+    context.pendingGrading = classroom.answers
+      .filter((answer) => answer.status !== "completed")
       .map(({ sceneId, questionId, status }) => ({ sceneId, questionId, status }));
     if (name === "read_scene") {
       const parsed = readSceneToolSchema.safeParse(input);
@@ -44,7 +62,13 @@ export async function executeChatTool(
     toolSignal = budget.callSignal();
     const found = await retrieveChat(stageId, parsed.data.query, embedding, toolSignal);
     budget.check();
-    const relevant = await filterRelevantCandidates(found.map((source) => ({ id: source.chunkId, text: JSON.stringify(source) })), model, budget, parsed.data.query);
+    // 向量召回后再筛选相关片段；只有实际放行的来源才可被最终回答引用。
+    const relevant = await filterRelevantCandidates(
+      found.map((source) => ({ id: source.chunkId, text: JSON.stringify(source) })),
+      model,
+      budget,
+      parsed.data.query,
+    );
     const admitted = found.filter((source) => relevant.has(source.chunkId));
     if (JSON.stringify(admitted).length > CHAT_LIMITS.toolChars) throw new ChatAgentError("LIMIT_EXCEEDED", "检索资料超过本轮工具长度，请缩小查询范围");
     admitted.forEach((source) => sources.set(source.chunkId, source));

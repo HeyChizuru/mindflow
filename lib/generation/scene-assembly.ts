@@ -55,6 +55,7 @@ export function buildCompleteScene(
     return null;
   }
 
+  // 只有内容和动作能够组成完整场景时，调用方才可以继续保存。
   const result = createSceneSchema.safeParse(candidate);
   return result.success ? result.data : null;
 }
