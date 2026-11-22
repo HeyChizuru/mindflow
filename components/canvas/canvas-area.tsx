@@ -7,15 +7,33 @@ import type { Scene } from '@/lib/types/scene';
 import type { QuizPresentation, TeachingEffect } from '@/components/stage/classroom-view-types';
 import { useI18n } from '@/lib/hooks/use-i18n';
 
-export function CanvasArea({ currentScene, quiz, effects, ...toolbar }: CanvasToolbarProps & {
-  currentScene: Scene | null; quiz?: QuizPresentation; effects?: TeachingEffect[];
-}) {
+export type CanvasAreaProps = CanvasToolbarProps & {
+  currentScene: Scene | null;
+  quiz?: QuizPresentation;
+  effects?: TeachingEffect[];
+};
+
+/** 课堂主画布区：场景渲染（含测验/教学效果）+ 底部播放工具栏。 */
+export function CanvasArea({ currentScene, quiz, effects, ...toolbar }: CanvasAreaProps) {
   const { t } = useI18n();
-  return <div className="@container/classroom flex min-h-0 flex-1 flex-col">
-    <div className="relative min-h-0 flex-1 overflow-hidden">
-      {currentScene ? <SceneProvider scene={currentScene}><SceneRenderer key={currentScene.id} scene={currentScene} quiz={quiz} effects={effects} /></SceneProvider>
-        : <p className="p-6 text-sm text-muted-foreground">{t('classroom.noScene')}</p>}
+
+  return (
+    <div className="@container/classroom flex min-h-0 flex-1 flex-col">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {currentScene ? (
+          <SceneProvider scene={currentScene}>
+            <SceneRenderer
+              key={currentScene.id}
+              scene={currentScene}
+              quiz={quiz}
+              effects={effects}
+            />
+          </SceneProvider>
+        ) : (
+          <p className="p-6 text-sm text-muted-foreground">{t('classroom.noScene')}</p>
+        )}
+      </div>
+      <CanvasToolbar {...toolbar} />
     </div>
-    <CanvasToolbar {...toolbar} />
-  </div>;
+  );
 }

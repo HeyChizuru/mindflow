@@ -12,11 +12,17 @@ import { ReplyPreview } from './reply-preview';
 
 // 一轮问答在图节点之间共享的状态；教师身份和工具调用都属于当前轮。
 const AnswerState = Annotation.Root({
+  // 本轮教师上下文，可能为空。
   context: Annotation<ChatContext | null>,
+  // 本轮教师身份，可能为空。
   teacherId: Annotation<ChatTeacherId | null>,
+  // 本轮是否需要轻量测验保护。
   needsQuizCheck: Annotation<boolean>,
+  // 本轮教师与工具的对话历史。
   messages: Annotation<ModelMessage[]>,
+  // 本轮工具调用列表。
   calls: Annotation<{ toolCallId: string; toolName: string; input: unknown }[]>,
+  // 本轮最终回答，可能为空。
   answer: Annotation<{ reply: string; chunkIds: string[] } | null>,
 });
 

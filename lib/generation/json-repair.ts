@@ -1,12 +1,12 @@
 /**
- * JSON parsing with fallback strategies for AI-generated responses.
+ * 解析模型返回的 JSON，并在失败时按多种策略修复常见格式问题。
  */
 
 import { jsonrepair } from 'jsonrepair';
 import { createLogger } from '@/lib/logger';
 const log = createLogger('Generation');
 
-/** Reject open containers/strings before syntax repair can complete a fragment. */
+/** 未闭合的容器或字符串直接拒绝，避免语法修复“补全”残缺片段。 */
 function hasCompleteJsonStructure(input: string): boolean {
   const stack: string[] = [];
   let inString = false;
@@ -60,17 +60,16 @@ function logJsonParseError(stage: string, jsonStr: string, error: unknown): void
 }
 
 export function parseJsonResponse<T>(response: string): T | null {
-  // Check the entire response before extracting any complete-looking inner block.
-  // Otherwise a closed object followed by a truncated remainder could be accepted.
+  // 先检查整段响应，再提取“看起来完整”的内层块；否则可能接受已闭合对象 + 尾部截断。
   if (!hasCompleteJsonStructure(response)) {
     log.warn('Incomplete JSON response; refusing to extract an inner fragment');
     return null;
   }
-  // Strategy 1: Try to extract JSON from markdown code blocks (may have multiple)
+  // 策略 1：从 Markdown 代码块中提取（可能有多段）
   const codeBlockMatches = response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g);
   for (const match of codeBlockMatches) {
     const extracted = match[1].trim();
-    // Only try if it looks like JSON (starts with { or [)
+    // 仅当以 { 或 [ 开头时才尝试
     if (extracted.startsWith('{') || extracted.startsWith('[')) {
       const result = tryParseJson<T>(extracted);
       if (result !== null) {
@@ -80,13 +79,12 @@ export function parseJsonResponse<T>(response: string): T | null {
     }
   }
 
-  // Strategy 2: Try to find JSON structure directly in response (no code block)
-  // Look for array or object start
+  // 策略 2：在正文中定位 JSON（无代码块）
   const jsonStartArray = response.indexOf('[');
   const jsonStartObject = response.indexOf('{');
 
   if (jsonStartArray !== -1 || jsonStartObject !== -1) {
-    // Prefer the structure that appears first
+    // 取最先出现的 [ 或 {
     const startIndex =
       jsonStartArray === -1
         ? jsonStartObject
@@ -94,7 +92,7 @@ export function parseJsonResponse<T>(response: string): T | null {
           ? jsonStartArray
           : Math.min(jsonStartArray, jsonStartObject);
 
-    // Find the matching close bracket
+    // 扫描到匹配的闭合括号
     let depth = 0;
     let endIndex = -1;
     let inString = false;
@@ -140,7 +138,7 @@ export function parseJsonResponse<T>(response: string): T | null {
     }
   }
 
-  // Strategy 3: Last resort - try the whole response
+  // 策略 3：最后尝试整段 trim 后的原文
   const result = tryParseJson<T>(response.trim());
   if (result !== null) {
     log.info('Successfully parsed raw response as JSON');
@@ -157,16 +155,13 @@ export function parseJsonResponse<T>(response: string): T | null {
   return null;
 }
 
-/**
- * Try to parse JSON with various fixes for common AI response issues
- */
+/** 依次尝试直接解析与多种常见 AI 输出修复手段。 */
 export function tryParseJson<T>(jsonStr: string): T | null {
-  // Attempt 1: Try parsing as-is
+  // 尝试 1：原样 parse
   try {
     return JSON.parse(jsonStr) as T;
   } catch (error) {
     logJsonParseError('Attempt 1', jsonStr, error);
-    // Continue to fix attempts
   }
 
   if (!hasCompleteJsonStructure(jsonStr)) {
@@ -174,35 +169,27 @@ export function tryParseJson<T>(jsonStr: string): T | null {
     return null;
   }
 
-  // Attempt 2: Fix common JSON issues from AI responses
+  // 尝试 2：修正 AI 常见 JSON 问题
   try {
     let fixed = jsonStr;
 
-    // Fix 0: Recover malformed property fragments that were accidentally
-    // emitted as standalone strings inside an object, such as:
-    // `"height: 76"` -> `"height": 76`
-    // `"fixedRatio: false"` -> `"fixedRatio": false`
-    // The object-context prefix/suffix guards keep valid JSON strings intact.
+    // 修复 0：对象内误写成整段字符串的键值片段，例如：
+    // `"height: 76"` -> `"height": 76`，`"fixedRatio: false"` -> `"fixedRatio": false`
+    // 前后文 [,{ 与 ,} 约束避免破坏合法 JSON 字符串。
     fixed = repairQuotedPropertyFragments(fixed);
 
-    // Fix 1: Handle LaTeX-style escapes that break JSON (e.g., \frac, \left, \right, \times, etc.)
-    // These are common in math content and need to be double-escaped
-    // Match backslash followed by letters (LaTeX commands) inside strings,
-    // but skip valid JSON escape sequences (\b, \f, \n, \r, \t, \u)
+    // 修复 1：字符串内的 LaTeX 反斜杠（\frac、\left 等），需加倍转义；
+    // 合法 JSON 转义 \b \f \n \r \t \u 保持不变。
     fixed = fixed.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (_match, content) => {
-      // Double-escape backslash+letter ONLY for non-JSON-escape letters
       const fixedContent = content.replace(/\\([a-zA-Z])/g, (_m: string, ch: string) => {
-        // Preserve valid JSON escape sequences
         if ('bfnrtu'.includes(ch)) return `\\${ch}`;
         return `\\\\${ch}`;
       });
       return `"${fixedContent}"`;
     });
 
-    // Fix 2: Fix other invalid escape sequences (e.g., \S, \L, etc.)
-    // Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+    // 修复 2：其余非法转义（如 \S）；合法集合：\" \\ \/ \b \f \n \r \t \uXXXX
     fixed = fixed.replace(/\\([^"\\\/bfnrtu\n\r])/g, (match, char) => {
-      // If it's a letter, it's likely a LaTeX command
       if (/[a-zA-Z]/.test(char)) {
         return '\\\\' + char;
       }
@@ -212,23 +199,20 @@ export function tryParseJson<T>(jsonStr: string): T | null {
     return JSON.parse(fixed) as T;
   } catch (error) {
     logJsonParseError('Attempt 2', jsonStr, error);
-    // Continue to next attempt
   }
 
-  // Attempt 3: Use jsonrepair to fix malformed JSON (e.g. unescaped quotes in Chinese text)
+  // 尝试 3：jsonrepair（如中文文本中未转义引号）
   try {
     const repaired = jsonrepair(jsonStr);
     return JSON.parse(repaired) as T;
   } catch (error) {
     logJsonParseError('Attempt 3', jsonStr, error);
-    // Continue to next attempt
   }
 
-  // Attempt 4: More aggressive fixing - remove control characters
+  // 尝试 4：剔除或转义控制字符
   try {
     let fixed = jsonStr;
 
-    // Remove or escape control characters
     fixed = fixed.replace(/[\x00-\x1F\x7F]/g, (char) => {
       switch (char) {
         case '\n':

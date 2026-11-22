@@ -6,7 +6,7 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('PlaybackEngine');
 
-/** Ordered playback for one scene; legacy discussion actions are skipped. */
+/** 单场景按序播放；遗留的 discussion 动作会被跳过。 */
 export class PlaybackEngine {
   private actionIndex = 0;
   private mode: EngineMode = 'idle';
@@ -72,7 +72,7 @@ export class PlaybackEngine {
     this.actionEngine.clearEffects();
   }
 
-  /** Finish the current reading interval; every intervening teaching action still runs. */
+  /** 跳过当前阅读等待；其间已排队的教学动作仍会按序执行。 */
   nextSegment(): void {
     if (this.speechTimer) clearTimeout(this.speechTimer);
     this.speechTimer = null;
@@ -107,7 +107,7 @@ export class PlaybackEngine {
     }
 
     let action: Action | undefined = this.scene.actions[this.actionIndex];
-    // Iterative skip keeps old scenes playable without timers, callbacks or stack growth.
+    // 用循环跳过 discussion，避免递归定时器/回调导致旧场景无法播放或栈过深。
     while (action?.type === 'discussion') {
       this.actionIndex++;
       action = this.scene.actions[this.actionIndex];
@@ -123,8 +123,7 @@ export class PlaybackEngine {
     switch (action.type) {
       case 'speech': {
         this.callbacks.onSpeechStart?.(action.text);
-        // Retain the source reading estimate: CJK 150ms/character,
-        // other text 240ms/word, with a 2-second minimum.
+        // 阅读时长估算：CJK 约 150ms/字，其他文本约 240ms/词，最短 2 秒。
         const cjkCount = (
           action.text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []
         ).length;
@@ -142,7 +141,7 @@ export class PlaybackEngine {
         } else if (action.type === 'spotlight' || action.type === 'laser') {
           this.callbacks.onEffectFire?.({ kind: action.type, targetId: action.elementId });
         }
-        // Keep visual actions ordered without recursive stack growth.
+        // 视觉类动作用 microtask 串行推进，避免同步递归撑爆调用栈。
         queueMicrotask(() => this.processNext());
         break;
       }
